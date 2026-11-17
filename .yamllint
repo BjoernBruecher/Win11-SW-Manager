@@ -1,0 +1,51 @@
+---
+extends: default
+
+rules:
+  # Allow both LF and CRLF (Windows compatibility)
+  new-lines: disable
+
+  # Line length: allow up to 120 chars (consistent with project flake8 config)
+  line-length:
+    max: 120
+    level: warning
+
+  # Require document start marker (---)
+  document-start: disable
+
+  # Indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Trailing spaces
+  trailing-spaces: enable
+
+  # Comments
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: enable
+
+  # Brackets and braces
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+
+  # Key duplicates
+  key-duplicates: enable
+
+  # Allow multiple documents per file
+  document-end: disable
+
+  # Accept both true/false and yes/no for boolean values
+  truthy: disable
+
+ignore: |
+  .git/
+  .venv/
+  node_modules/
+  __pycache__/

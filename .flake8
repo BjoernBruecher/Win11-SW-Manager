@@ -1,0 +1,37 @@
+[flake8]
+# Install lint dependencies with: python -m pip install -r requirements-dev.txt
+# Maximum line length (Black-compatible)
+max-line-length = 120
+
+# Cyclomatic complexity (McCabe)
+max-complexity = 10
+
+# Ignore rules that conflict with Black
+extend-ignore =
+    E203,
+    W503
+
+# Common exclusions
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    build,
+    dist,
+    .mypy_cache,
+    .pytest_cache,
+    .tox,
+    documentation
+
+# Optional: per-file ignores
+per-file-ignores =
+    __init__.py:F401
+
+# Show source line and error code
+show-source = True
+statistics = True
+
+# Enable doctest checking (optional)
+doctests = False

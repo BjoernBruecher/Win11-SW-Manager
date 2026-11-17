@@ -1,0 +1,14 @@
+### Python ###
+__pycache__/
+*.pyc
+/.idea/
+/build/
+/dist/
+
+### Linter ###
+logback.log
+# VIM files
+*.swp
+
+### MS Office temp files ###
+~$*
