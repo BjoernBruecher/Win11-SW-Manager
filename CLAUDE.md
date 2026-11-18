@@ -16,7 +16,9 @@ launcher imports the controller through `src.software_manager`.
 
 - Keep changes compatible with Windows and the Python standard library unless
   a task explicitly requires otherwise.
-- Follow the existing Tkinter/ttk patterns and keep user-facing text in German.
+- Follow the existing Tkinter/ttk patterns and keep all user-facing text
+  translated for the DE/US/FR/IT language selector. Select the operating
+  system locale when supported and fall back to German otherwise.
 - Treat registry metadata and icons as optional. Missing or invalid values must
   not prevent the application list from loading.
 - Keep imported/exported JSON backward-compatible with older files that lack

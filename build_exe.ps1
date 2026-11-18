@@ -29,6 +29,8 @@ $arguments = @(
     "--onefile",
     "--windowed",
     "--name", "Win11-SW-Manager",
+    "--add-data",
+    ("{0};src\locales" -f (Join-Path $projectRoot "src\locales")),
     "--distpath", $distDirectory,
     "--workpath", (Join-Path $buildDirectory "work"),
     "--specpath", $buildDirectory,

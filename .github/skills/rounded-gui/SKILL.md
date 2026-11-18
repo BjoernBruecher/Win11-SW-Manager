@@ -22,7 +22,12 @@ Use these guidelines for all GUI changes in this repository:
   inside a clearly visible rounded surface so its square edges do not replace
   the rounded table frame.
 - Preserve visible hover and keyboard-focus behavior, readable contrast,
-  German user-facing labels, and existing table interactions.
+  translations for DE, US, FR, and IT, and existing table interactions.
+  Select the operating system locale at startup when supported; otherwise
+  fall back to German.
+- Keep translated strings in the UTF-8 JSON files under `src/locales/`; do
+  not hard-code user-facing text in view or controller code. Keep all locale
+  keys and format placeholders consistent.
 - Keep the interface dependency-free unless a task explicitly requires a new
   package.
 - After visual changes, run syntax checks, Flake8, Pylint, and a focused GUI

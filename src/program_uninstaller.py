@@ -5,6 +5,8 @@ import os
 import subprocess
 from ctypes import wintypes
 
+from .localization import translate
+
 
 class ProgramUninstaller:
     """Encapsulate Windows uninstall command validation and execution."""
@@ -42,11 +44,11 @@ class ProgramUninstaller:
             ctypes.windll.kernel32.LocalFree(argv)
 
     @classmethod
-    def prepare_arguments(cls, command):
+    def prepare_arguments(cls, command, language="DE"):
         """Validate an uninstall command and prepare safe process arguments."""
         args = cls.split_command(command)
         if not args:
-            raise ValueError("Leerer Befehl")
+            raise ValueError(translate(language, "empty_command"))
 
         executable = os.path.basename(args[0]).lower()
         if executable in ("msiexec", "msiexec.exe"):
@@ -55,8 +57,7 @@ class ProgramUninstaller:
                 for argument in args
             ):
                 raise ValueError(
-                    "Unbeaufsichtigte MSI-Deinstallation wird aus "
-                    "Sicherheitsgründen nicht automatisch ausgeführt."
+                    translate(language, "silent_msi_blocked")
                 )
 
             for index, argument in enumerate(args):
@@ -67,16 +68,16 @@ class ProgramUninstaller:
 
         if executable.endswith((".bat", ".cmd", ".ps1", ".vbs")):
             raise ValueError(
-                "Skriptbasierte Deinstallation benötigt eine manuelle Prüfung."
+                translate(language, "script_uninstall_blocked")
             )
 
         return args
 
     @classmethod
-    def run(cls, command):
+    def run(cls, command, language="DE"):
         """Run a validated uninstall command without invoking a shell."""
         return subprocess.run(
-            cls.prepare_arguments(command),
+            cls.prepare_arguments(command, language),
             shell=False,
             check=False
         )

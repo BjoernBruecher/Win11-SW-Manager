@@ -7,12 +7,21 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
+from .localization import detect_system_language, translate
 from .program_icons import get_program_icon_ppm
 from .program_repository import ProgramRepository
 from .program_uninstaller import ProgramUninstaller
+from .rounded_widgets import (
+    RoundedButton,
+    RoundedButtonStyle,
+    RoundedPanel,
+    RoundedPanelStyle
+)
+from .single_instance import (
+    acquire_application_mutex,
+    release_application_mutex
+)
 from .software_manager_view import SoftwareManagerView
-
-JSON_FILE = "installierte_programme.json"
 
 
 class SoftwareManager:
@@ -31,15 +40,30 @@ class SoftwareManager:
             on_import=self.import_json,
             on_uninstall=self.uninstall_selected
         )
+        self._initial_refresh_id = self.root.after(
+            100, self._start_initial_refresh
+        )
+
+    def _start_initial_refresh(self):
+        """Start the initial scan after the main window has rendered."""
+        self._initial_refresh_id = None
         self.refresh()
+
+    def _text(self, key, **values):
+        """Return translated text for the current interface language."""
+        return translate(self.view.language.get(), key, **values)
 
     def refresh(self):
         """Reload installed programs and icons in a background thread."""
+        if self._initial_refresh_id is not None:
+            self.root.after_cancel(self._initial_refresh_id)
+            self._initial_refresh_id = None
         if self.busy:
             return
 
         self.busy = True
-        self.view.set_status("Suche installierte Programme ...")
+        self.view.set_status("status_searching")
+        self.view.show_list_progress()
         threading.Thread(
             target=self._refresh_worker, daemon=True
         ).start()
@@ -78,8 +102,9 @@ class SoftwareManager:
         """Update widgets after the background program scan finishes."""
         self.busy = False
         if error:
-            self.view.set_status("Fehler")
-            messagebox.showerror("Fehler", error)
+            self.view.hide_list_progress()
+            self.view.set_status("status_error")
+            messagebox.showerror(self._text("status_error"), error)
             return
 
         program_images = {}
@@ -93,15 +118,22 @@ class SoftwareManager:
                 )
             except tk.TclError:
                 continue
-        self.view.set_programs(programs, program_images)
-        self.view.set_status("Programmliste aktualisiert")
+        self.view.show_list_progress(
+            mode="determinate", maximum=len(programs)
+        )
+        try:
+            self.view.set_programs(programs, program_images)
+        finally:
+            self.view.hide_list_progress()
+        self.view.set_status("status_refreshed")
 
     def export_json(self):
         """Save the full program inventory as a JSON file."""
         path = filedialog.asksaveasfilename(
+            title=self._text("export_title"),
             defaultextension=".json",
-            initialfile=JSON_FILE,
-            filetypes=[("JSON Dateien", "*.json")]
+            initialfile=self._text("json_filename"),
+            filetypes=[(self._text("json_files"), "*.json")]
         )
         if not path:
             return
@@ -114,17 +146,22 @@ class SoftwareManager:
         try:
             with open(path, "w", encoding="utf-8") as json_file:
                 json.dump(data, json_file, indent=4, ensure_ascii=False)
-            self.view.set_status("JSON exportiert")
+            self.view.set_status("status_exported")
             messagebox.showinfo(
-                "Export", "Programmliste wurde gespeichert."
+                self._text("export_title"),
+                self._text("export_success")
             )
         except (OSError, TypeError, ValueError) as exc:
-            messagebox.showerror("Exportfehler", str(exc))
+            messagebox.showerror(
+                self._text("export_error_title"), str(exc)
+            )
 
     def import_json(self):
         """Load and validate a program inventory from a JSON file."""
         path = filedialog.askopenfilename(
-            filetypes=[("JSON Dateien", "*.json")]
+            title=self._text("import_json"),
+            initialfile=self._text("json_filename"),
+            filetypes=[(self._text("json_files"), "*.json")]
         )
         if not path:
             return
@@ -133,39 +170,44 @@ class SoftwareManager:
             with open(path, "r", encoding="utf-8") as json_file:
                 data = json.load(json_file)
             if not isinstance(data, dict):
-                raise ValueError("Ungültiges JSON-Format")
+                raise ValueError(self._text("invalid_json"))
 
             imported = data.get("programs", [])
             if not isinstance(imported, list):
-                raise ValueError("Ungültiges JSON-Format")
+                raise ValueError(self._text("invalid_json"))
             if any(
                 not isinstance(program, dict)
                 or not isinstance(program.get("name"), str)
                 for program in imported
             ):
-                raise ValueError("Ungültige Programmeinträge")
-
-            self.view.set_programs(imported, self.view.program_icons)
-            self.view.set_status("JSON importiert")
+                raise ValueError(self._text("invalid_programs"))
+            self.view.show_list_progress(
+                mode="determinate", maximum=len(imported)
+            )
+            try:
+                self.view.set_programs(imported, self.view.program_icons)
+            finally:
+                self.view.hide_list_progress()
+            self.view.set_status("status_imported")
         except (OSError, TypeError, UnicodeError, ValueError) as exc:
-            messagebox.showerror("Importfehler", str(exc))
+            messagebox.showerror(
+                self._text("import_error_title"), str(exc)
+            )
 
     def uninstall_selected(self):
         """Confirm the selection and process each uninstall request."""
         programs = self.view.selected_programs()
         if not programs:
             messagebox.showwarning(
-                "Hinweis", "Bitte Programme auswählen."
+                self._text("selection_warning_title"),
+                self._text("selection_warning")
             )
             return
 
         names = "\n".join(program["name"] for program in programs)
         confirm = messagebox.askyesno(
-            "Deinstallation bestätigen",
-            "Folgende Programme werden zur Deinstallation "
-            "vorgemerkt:\n\n"
-            + names
-            + "\n\nFortfahren?"
+            self._text("confirm_title"),
+            self._text("confirm_message", names=names)
         )
         if not confirm:
             return
@@ -176,26 +218,58 @@ class SoftwareManager:
     def _create_uninstall_progress(self, total):
         """Create a window showing uninstall successes and remaining items."""
         window = tk.Toplevel(self.root)
-        window.title("Deinstallationsfortschritt")
+        window.title(self._text("progress_title"))
         window.transient(self.root)
         window.resizable(False, False)
+        window.configure(background="#0b1120")
 
-        frame = ttk.Frame(window, padding=18)
-        frame.pack(fill="both", expand=True)
+        panel = RoundedPanel(
+            window,
+            RoundedPanelStyle(
+                fill="#121d31",
+                background="#0b1120",
+                outline="#263752",
+                radius=13,
+                inset=14
+            )
+        )
+        panel.pack(fill="both", expand=True, padx=12, pady=12)
+        frame = panel.content
         status = ttk.Label(
-            frame, text="", justify="left", wraplength=420
+            frame,
+            text="",
+            justify="left",
+            wraplength=460,
+            style="Status.TLabel"
         )
         status.pack(fill="x", pady=(0, 12))
 
         progress = ttk.Progressbar(
-            frame, mode="determinate", maximum=total, length=420
+            frame,
+            mode="determinate",
+            maximum=total,
+            length=440,
+            style="Horizontal.TProgressbar"
         )
         progress.pack(fill="x")
-        close_button = ttk.Button(
-            frame, text="Schließen", command=window.destroy
+        close_button = RoundedButton(
+            frame,
+            self._text("progress_close"),
+            command=window.destroy,
+            style=RoundedButtonStyle(
+                background="#3478e5",
+                foreground="#ffffff",
+                hover_background="#2867cc",
+                border="#4386f0",
+                canvas_background="#121d31",
+                font=("Segoe UI", 9, "bold"),
+                padx=14,
+                pady=8,
+                radius=12
+            )
         )
-        close_button.state(["disabled"])
-        close_button.pack(anchor="e", pady=(14, 0))
+        close_button.pack(side="right", pady=(14, 0))
+        close_button.set_enabled(False)
         window.protocol("WM_DELETE_WINDOW", close_button.invoke)
 
         window.update_idletasks()
@@ -209,18 +283,23 @@ class SoftwareManager:
         window.lift()
         return window, progress, status, close_button
 
-    @staticmethod
-    def _update_uninstall_progress(widgets, counts, current_program=""):
+    def _update_uninstall_progress(
+        self, widgets, counts, current_program=""
+    ):
         """Refresh uninstall counts and the progress bar."""
         window, progress, status = widgets
         successful, processed, total = counts
-        status_text = (
-            f"{successful} von {total} erfolgreich deinstalliert; "
-            f"{total - successful} verbleibend "
-            f"({processed} von {total} bearbeitet)"
+        status_text = self._text(
+            "progress_status",
+            successful=successful,
+            total=total,
+            remaining=total - successful,
+            processed=processed
         )
         if current_program:
-            status_text += f"\nAktuell: {current_program}"
+            status_text += self._text(
+                "progress_current", program=current_program
+            )
         progress.config(value=processed)
         status.config(text=status_text)
         window.update_idletasks()
@@ -245,18 +324,19 @@ class SoftwareManager:
                 progress_widgets, (successful, processed, total)
             )
 
-        close_button.state(["!disabled"])
+        close_button.set_enabled(True)
         self.view.set_status(
-            f"Deinstallation beendet: {successful} von "
-            f"{total} erfolgreich"
+            "status_uninstall_finished",
+            successful=successful,
+            total=total
         )
 
     def uninstall_one(self, program):
         """Confirm and safely run one program's uninstall command."""
         name = program["name"]
         confirm = messagebox.askyesno(
-            "Einzelbestätigung",
-            f"Möchtest du {name} wirklich deinstallieren?"
+            self._text("single_confirm_title"),
+            self._text("single_confirm_message", name=name)
         )
         if not confirm:
             return False
@@ -267,35 +347,51 @@ class SoftwareManager:
         )
         if not command:
             messagebox.showwarning(
-                "Nicht möglich",
-                f"Kein Deinstallationsbefehl für {name}."
+                self._text("no_uninstall_title"),
+                self._text("no_uninstall_command", name=name)
             )
             return False
 
         try:
-            result = self.uninstaller.run(command)
+            result = self.uninstaller.run(
+                command, language=self.view.language.get()
+            )
         except (OSError, ValueError, ctypes.ArgumentError) as exc:
             messagebox.showerror(
-                "Deinstallationsfehler",
+                self._text("uninstall_error_title"),
                 f"{name}:\n{exc}"
             )
             return False
 
         if result.returncode == 0:
             messagebox.showinfo(
-                "Deinstallation",
-                f"Deinstallationsprozess von {name} beendet."
+                self._text("uninstall_success_title"),
+                self._text("uninstall_success", name=name)
             )
             return True
         messagebox.showwarning(
-            "Deinstallation",
-            f"Prozess beendet mit Exit-Code {result.returncode}."
+            self._text("uninstall_failed_title"),
+            self._text(
+                "uninstall_failed", code=result.returncode
+            )
         )
         return False
 
 
 def main():
     """Launch the Windows software manager."""
-    main_window = tk.Tk()
-    SoftwareManager(main_window)
-    main_window.mainloop()
+    instance_mutex = acquire_application_mutex()
+    if instance_mutex is None:
+        language = detect_system_language()
+        messagebox.showinfo(
+            translate(language, "already_running_title"),
+            translate(language, "already_running_message")
+        )
+        return
+
+    try:
+        main_window = tk.Tk()
+        SoftwareManager(main_window)
+        main_window.mainloop()
+    finally:
+        release_application_mutex(instance_mutex)

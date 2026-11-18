@@ -100,6 +100,7 @@ class RoundedButton:
         self._font = tkfont.Font(parent=parent, font=self._style.font)
         self._text = text
         self._command = command
+        self._enabled = True
         self._state = "normal"
         width = self._font.measure(text) + 2 * self._style.padx
         height = self._font.metrics("linespace") + 2 * self._style.pady
@@ -127,8 +128,28 @@ class RoundedButton:
 
     def invoke(self):
         """Invoke the button command when one is configured."""
-        if self._command:
+        if self._command and self._enabled:
             self._command()
+
+    def set_enabled(self, enabled):
+        """Enable or disable interaction while retaining the rounded style."""
+        self._enabled = bool(enabled)
+        self._state = "normal"
+        self.widget.configure(
+            cursor=(
+                "hand2" if self._command and self._enabled else "arrow"
+            ),
+            takefocus=bool(self._command and self._enabled)
+        )
+        self._draw_button()
+
+    def set_text(self, text):
+        """Update the label and resize the button to fit it."""
+        self._text = text
+        self.widget.configure(
+            width=self._font.measure(text) + 2 * self._style.padx
+        )
+        self._draw_button()
 
     def _draw_button(self, event=None):
         """Draw the button background and centered label."""
@@ -137,7 +158,11 @@ class RoundedButton:
         self.widget.delete("button")
         radius = min(self._style.radius, width / 2, height / 2)
         color = self._style.background
-        if self._state == "hover":
+        foreground = self._style.foreground
+        if not self._enabled:
+            color = "#25334a"
+            foreground = "#8192ad"
+        elif self._state == "hover":
             color = self._style.hover_background
 
         points = _rounded_rectangle_points(
@@ -156,14 +181,14 @@ class RoundedButton:
             width / 2,
             height / 2,
             text=self._text,
-            fill=self._style.foreground,
+            fill=foreground,
             font=self._font,
             tags="button"
         )
 
     def _on_enter(self, event):
         """Show the hover color when the pointer enters the button."""
-        if event.widget is self.widget and self._command:
+        if event.widget is self.widget and self._command and self._enabled:
             self._state = "hover"
             self._draw_button()
 
@@ -175,7 +200,7 @@ class RoundedButton:
 
     def _on_press(self, event):
         """Show the pressed state for an active button."""
-        if event.widget is self.widget and self._command:
+        if event.widget is self.widget and self._command and self._enabled:
             self._state = "pressed"
             self._draw_button()
 
@@ -183,6 +208,7 @@ class RoundedButton:
         """Invoke the action when release occurs inside the button."""
         should_invoke = (
             self._command
+            and self._enabled
             and event.widget is self.widget
             and 0 <= event.x <= self.widget.winfo_width()
             and 0 <= event.y <= self.widget.winfo_height()
@@ -194,7 +220,11 @@ class RoundedButton:
 
     def _on_key(self, event):
         """Invoke the action using Enter or Space."""
-        if self._command and event.keysym in ("Return", "space"):
+        if (
+            self._command
+            and self._enabled
+            and event.keysym in ("Return", "space")
+        ):
             self.invoke()
             return "break"
         return None

@@ -95,13 +95,20 @@ class ProgramRepository:
         return sorted(programs, key=lambda program: program["name"].lower())
 
 
-def format_install_date(value):
+def format_install_date(value, language="DE"):
     """Format a registry install date for display."""
     if not value:
         return "—"
 
+    date_formats = {
+        "DE": "%d.%m.%Y",
+        "US": "%m/%d/%Y",
+        "FR": "%d/%m/%Y",
+        "IT": "%d/%m/%Y"
+    }
+    date_format = date_formats.get(language, date_formats["DE"])
     try:
-        return datetime.strptime(str(value), "%Y%m%d").strftime("%d.%m.%Y")
+        return datetime.strptime(str(value), "%Y%m%d").strftime(date_format)
     except ValueError:
         return "—"
 

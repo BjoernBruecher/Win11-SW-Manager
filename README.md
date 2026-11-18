@@ -11,11 +11,15 @@ This project reads installed applications from the Windows registry, displays th
 - View the program name, version, publisher, installation date, and estimated size
 - See each program's icon when Windows provides one
 - Select multiple entries
+- Show the main window before the initial system scan and populate the table afterward
 - See the live number of selected programs marked for uninstall
+- Track progress while reading and updating the program list
 - Track successful uninstallations and remaining programs with a progress bar
 - Export the program list as JSON
 - Import a previously exported JSON file
 - Uninstall selected programs with safety checks
+- Allow only one application instance across Windows sessions
+- Select German (DE), English (US), French (FR), or Italian (IT) using the radio buttons
 
 ## Features
 
@@ -65,6 +69,9 @@ The script builds a single-file, windowed executable at
 ## Usage notes
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
+- At startup, the interface selects the supported language matching the operating system locale. If it is unsupported, German is selected; the radio buttons can be used to change it.
+- The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
+- Import and export dialogs suggest a JSON filename in the currently selected language.
 - Installation dates and estimated sizes are read from the registry when available. Size values are estimates reported by each installer.
 - Some programs may require administrator rights to uninstall successfully.
 - A confirmation prompt is shown before uninstalling. Unsafe or script-based uninstall commands are not executed automatically.
@@ -89,8 +96,16 @@ Win11-SW-Manager/
 │   ├── software_manager_view.py
 │   ├── program_repository.py
 │   ├── program_uninstaller.py
-│   └── program_icons.py
-└── installierte_programme.json   (generated during export)
+│   ├── program_icons.py
+│   ├── single_instance.py
+│   ├── localization.py
+│   ├── rounded_widgets.py
+│   └── locales/
+│       ├── de.json
+│       ├── us.json
+│       ├── fr.json
+│       └── it.json
+└── <locale-specific JSON filename>   (generated during export)
 ```
 
 ## Architecture
