@@ -42,7 +42,7 @@ This project reads installed applications from the Windows registry, displays th
 - Show the application icon in the window and packaged executable, for use on shortcuts
 - Show the application version in the lower-left corner of the window
 - Request administrator privileges at startup
-- Open the window at a height that keeps the copyright notice visible
+- Adapt the initial window height to the available screen space so the version and copyright notice are visible
 
 ## Screenshot
 

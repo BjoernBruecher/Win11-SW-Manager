@@ -96,8 +96,12 @@ class SoftwareManagerView:
             iconbitmap(str(
                 bundle_directory / "assets" / "program.ico"
             ))
-        self.root.geometry("1200x800")
-        self.root.minsize(950, 700)
+        window_height = min(
+            800,
+            max(600, self.root.winfo_screenheight() - 100)
+        )
+        self.root.geometry(f"1200x{window_height}")
+        self.root.minsize(950, min(700, window_height))
         self.setup_style()
         self.tree, self.status, self.list_progress = self.create_interface(
             on_refresh,
@@ -357,6 +361,9 @@ class SoftwareManagerView:
         )
         self._create_search(toolbar)
 
+        status, list_progress = self._create_footer(
+            on_uninstall, on_download_update
+        )
         content = ttk.Frame(self.root, padding=(18, 11, 18, 0))
         content.pack(fill="both", expand=True)
         table_card = RoundedPanel(
@@ -382,9 +389,6 @@ class SoftwareManagerView:
         )
         table_surface.pack(fill="both", expand=True)
         tree = self._create_table(table_surface.content)
-        status, list_progress = self._create_footer(
-            on_uninstall, on_download_update
-        )
         return tree, status, list_progress
 
     def _create_summary_cards(self, parent: tk.Misc) -> None:
@@ -577,6 +581,19 @@ class SoftwareManagerView:
         on_download_update: Callable[[], None]
     ) -> Tuple[ttk.Label, ttk.Progressbar]:
         """Add status, uninstall action, version, and copyright notice."""
+        copyright_footer = ttk.Frame(self.root, padding=(22, 0, 22, 9))
+        copyright_footer.pack(side="bottom", fill="x")
+        ttk.Label(
+            copyright_footer,
+            text=f"v{APP_VERSION}",
+            style="Subheader.TLabel"
+        ).pack(side="left")
+        ttk.Label(
+            copyright_footer,
+            text="Copyright (C) 2026 Bjoern Bruecher",
+            style="Subheader.TLabel"
+        ).pack(side="right")
+
         footer_panel = RoundedPanel(
             self.root,
             RoundedPanelStyle(
@@ -587,7 +604,9 @@ class SoftwareManagerView:
                 inset=12
             )
         )
-        footer_panel.pack(fill="x", padx=18, pady=(8, 0))
+        footer_panel.pack(
+            side="bottom", fill="x", padx=18, pady=(8, 0)
+        )
         footer = footer_panel.content
         status = ttk.Label(
             footer,
@@ -638,18 +657,6 @@ class SoftwareManagerView:
         )
         self.action_buttons["uninstall_button"].pack(side="right")
 
-        copyright_footer = ttk.Frame(self.root, padding=(22, 0, 22, 9))
-        copyright_footer.pack(fill="x")
-        ttk.Label(
-            copyright_footer,
-            text=f"v{APP_VERSION}",
-            style="Subheader.TLabel"
-        ).pack(side="left")
-        ttk.Label(
-            copyright_footer,
-            text="Copyright (C) 2026 Bjoern Bruecher",
-            style="Subheader.TLabel"
-        ).pack(side="right")
         return status, list_progress
 
     def _make_button(
