@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $entryPoint = Join-Path $projectRoot "Win11-SW-Manager.py"
 $iconPath = Join-Path $projectRoot "assets\program.ico"
+$logoPath = Join-Path $projectRoot "assets\program.png"
 $buildDirectory = Join-Path $projectRoot "build"
 $distDirectory = Join-Path $projectRoot "dist"
 $executablePath = Join-Path $distDirectory "Win11-SW-Manager.exe"
@@ -20,6 +21,10 @@ if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
 
 if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
     throw "Application icon not found: $iconPath"
+}
+
+if (-not (Test-Path -LiteralPath $logoPath -PathType Leaf)) {
+    throw "Application logo not found: $logoPath"
 }
 
 & $PythonCommand -c "import PyInstaller"
@@ -40,6 +45,8 @@ $arguments = @(
     ("{0};src\locales" -f (Join-Path $projectRoot "src\locales")),
     "--add-data",
     ("{0};assets" -f $iconPath),
+    "--add-data",
+    ("{0};assets" -f $logoPath),
     "--distpath", $distDirectory,
     "--workpath", (Join-Path $buildDirectory "work"),
     "--specpath", $buildDirectory,

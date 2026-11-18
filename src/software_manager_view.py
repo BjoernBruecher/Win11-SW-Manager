@@ -64,7 +64,8 @@ class SoftwareManagerView:
         self.widgets: Dict[str, Dict[str, Any]] = {
             "summary_values": {},
             "labels": {},
-            "action_buttons": {}
+            "action_buttons": {},
+            "icons": {}
         }
         self.variables: Dict[str, tk.StringVar] = {
             "search": tk.StringVar(master=self.root),
@@ -83,19 +84,24 @@ class SoftwareManagerView:
         self.status: ttk.Label
         self.list_progress: ttk.Progressbar
         self.root.title(self._text("window_title"))
+        bundle_directory = Path(getattr(
+            sys,
+            "_MEIPASS",
+            Path(__file__).resolve().parent.parent
+        ))
+        asset_directory = bundle_directory / "assets"
         if sys.platform == "win32":
-            bundle_directory = Path(getattr(
-                sys,
-                "_MEIPASS",
-                Path(__file__).resolve().parent.parent
-            ))
             iconbitmap = cast(
                 Callable[[str], object],
                 getattr(self.root, "iconbitmap")
             )
             iconbitmap(str(
-                bundle_directory / "assets" / "program.ico"
+                asset_directory / "program.ico"
             ))
+        self.widgets["icons"]["application"] = tk.PhotoImage(
+            master=self.root,
+            file=str(asset_directory / "program.png")
+        )
         window_height = min(
             800,
             max(600, self.root.winfo_screenheight() - 100)
@@ -278,20 +284,11 @@ class SoftwareManagerView:
         self.root.configure(bg="#0b1120")
         header = ttk.Frame(self.root, padding=(22, 18, 22, 13))
         header.pack(fill="x")
-        RoundedButton(
+        tk.Label(
             header,
-            text="W",
-            style=RoundedButtonStyle(
-                background="#3277e8",
-                foreground="#ffffff",
-                hover_background="#3277e8",
-                border="#4386f0",
-                canvas_background="#0b1120",
-                font=("Segoe UI", 14, "bold"),
-                padx=12,
-                pady=9,
-                radius=11
-            )
+            image=self.widgets["icons"]["application"],
+            background="#0b1120",
+            borderwidth=0
         ).pack(side="left", padx=(0, 12))
 
         title_block = ttk.Frame(header)
