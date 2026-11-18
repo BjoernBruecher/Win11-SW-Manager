@@ -10,6 +10,7 @@ This project reads installed applications from the Windows registry, displays th
 - Sort by any table column by clicking its heading
 - View the program name, version, publisher, installation date, and estimated size
 - Check the latest available version for catalog-matched programs using winget
+- Open the exact available-version installer link for a selected program when an update is found
 - See each program's icon when Windows provides one
 - Select multiple entries
 - Show the main window before the initial system scan and populate the table afterward
@@ -23,6 +24,7 @@ This project reads installed applications from the Windows registry, displays th
 - Select German (DE), English (US), French (FR), or Italian (IT) using the radio buttons
 - Show the operating system locale in the application header
 - Show the application icon in the window and packaged executable, for use on shortcuts
+- Request administrator privileges at startup
 - Open the window at a height that keeps the copyright notice visible
 
 ## Screenshot
@@ -61,6 +63,10 @@ This project reads installed applications from the Windows registry, displays th
 python Win11-SW-Manager.py
 ```
 
+Windows displays a User Account Control (UAC) prompt at startup. The
+application starts only after administrator permission is granted; canceling
+the prompt exits without opening the application.
+
 ## Build a standalone executable
 
 Install PyInstaller and run the PowerShell build script:
@@ -74,13 +80,14 @@ The script builds a single-file, windowed executable at
 `dist\Win11-SW-Manager.exe`. You can select a different Python executable with
 `.\build_exe.ps1 -PythonCommand C:\Path\To\python.exe`.
 The executable includes the application icon, which Windows can also use for
-shortcuts to the program.
+shortcuts to the program. Windows prompts for administrator permission whenever
+the executable starts.
 
 ## Usage notes
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
 - At startup, the interface selects the supported language matching the operating system locale. If it is unsupported, German is selected; the radio buttons can be used to change it.
-- The latest-version column uses the configured winget sources. Matching is exact by application name; unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
+- The latest-version column uses the configured winget sources. Matching is exact by application name; unmatched programs remain blank. When winget reports an available update, select that program and choose **Download update** to open its installer URL in the browser. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
 - Winget may send installed application names to its configured sources during lookup.
 - The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
 - Import and export dialogs suggest a JSON filename in the currently selected language.

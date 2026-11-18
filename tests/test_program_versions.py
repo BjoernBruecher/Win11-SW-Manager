@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from src.program_versions import (
     ProgramVersionLookupError,
+    get_download_url,
+    get_latest_version_details,
     get_latest_versions,
     parse_winget_list,
 )
@@ -102,6 +104,42 @@ class ParseWingetListTests(unittest.TestCase):
             ["3.5.0"],
         )
 
+    @patch("src.program_versions.subprocess.run")
+    def test_returns_exact_package_ids_and_update_flags(self, run):
+        """Only available updates are marked for installer lookup."""
+        run.return_value.returncode = 0
+        run.return_value.stdout = format_winget_table(
+            [
+                ("Example Editor", "Example.Editor", "1.0", "1.2", "winget"),
+                ("Example Player", "Example.Player", "3.4", "", "winget"),
+            ]
+        )
+        run.return_value.stderr = ""
+
+        self.assertEqual(
+            get_latest_version_details(
+                [{"name": "Example Editor"}, {"name": "Example Player"}]
+            ),
+            (["1.2", "3.4"], ["Example.Editor", "Example.Player"], [True, False]),
+        )
+
+    @patch("src.program_versions.subprocess.run")
+    def test_does_not_guess_package_id_for_duplicate_names(self, run):
+        """Keep ambiguous IDs unavailable even when names share a version."""
+        run.return_value.returncode = 0
+        run.return_value.stdout = format_winget_table(
+            [
+                ("Example App", "Example.App.Stable", "1.0", "2.0", "winget"),
+                ("Example App", "Example.App.Beta", "1.0", "2.0", "winget"),
+            ]
+        )
+        run.return_value.stderr = ""
+
+        self.assertEqual(
+            get_latest_version_details([{"name": "Example App"}]),
+            (["2.0"], [""], [True]),
+        )
+
     def test_unrecognized_output_is_an_error(self):
         """Reject output that cannot be parsed as a package list."""
         with self.assertRaises(ProgramVersionLookupError):
@@ -123,6 +161,59 @@ class ParseWingetListTests(unittest.TestCase):
         self.assertEqual(versions, ["1.2.0"])
         self.assertEqual(run.call_args.args[0][:2], ["winget", "list"])
         self.assertFalse(run.call_args.kwargs["shell"])
+
+    @patch("src.program_versions.subprocess.run")
+    def test_reads_installer_url_for_the_exact_available_version(self, run):
+        """Resolve the installer URL for a specific package version."""
+        run.return_value.returncode = 0
+        run.return_value.stdout = (
+            "Version: 1.2.0\n"
+            "Installer Url: https://example.test/download/1.2.0.exe\n"
+        )
+        run.return_value.stderr = ""
+
+        self.assertEqual(
+            get_download_url("Example.Editor", "1.2.0"),
+            "https://example.test/download/1.2.0.exe",
+        )
+        self.assertEqual(
+            run.call_args.args[0][2:],
+            [
+                "--id",
+                "Example.Editor",
+                "--exact",
+                "--version",
+                "1.2.0",
+                "--disable-interactivity",
+            ],
+        )
+        self.assertFalse(run.call_args.kwargs["shell"])
+
+    @patch("src.program_versions.subprocess.run")
+    def test_reads_a_localized_installer_url_label(self, run):
+        """Recognize translated winget field labels for installer URLs."""
+        run.return_value.returncode = 0
+        run.return_value.stdout = (
+            "Version: 1.2.0\n"
+            "Installationsprogramm-URL: "
+            "https://example.test/download/1.2.0.exe\n"
+        )
+        run.return_value.stderr = ""
+
+        self.assertEqual(
+            get_download_url("Example.Editor", "1.2.0"),
+            "https://example.test/download/1.2.0.exe",
+        )
+
+    @patch("src.program_versions.subprocess.run")
+    def test_requires_an_http_installer_url(self, run):
+        """Reject winget metadata without a safe web installer URL."""
+        run.return_value.returncode = 0
+        run.return_value.stdout = "Installer Url: file:///local/setup.exe\n"
+        run.return_value.stderr = ""
+
+        with self.assertRaisesRegex(ProgramVersionLookupError, "installer URL"):
+            get_download_url("Example.Editor", "1.2.0")
 
     @patch("src.program_versions.subprocess.run")
     def test_reports_winget_source_errors(self, run):

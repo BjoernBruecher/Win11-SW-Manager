@@ -51,7 +51,9 @@ class SoftwareManagerView:
         on_refresh: Callable[[], None],
         on_export: Callable[[], None],
         on_import: Callable[[], None],
-        on_uninstall: Callable[[], None]
+        on_uninstall: Callable[[], None],
+        *,
+        on_download_update: Callable[[], None]
     ) -> None:
         """Create the window, controls, and empty program table."""
         self.root: tk.Tk = root
@@ -97,7 +99,11 @@ class SoftwareManagerView:
         self.root.minsize(950, 700)
         self.setup_style()
         self.tree, self.status, self.list_progress = self.create_interface(
-            on_refresh, on_export, on_import, on_uninstall
+            on_refresh,
+            on_export,
+            on_import,
+            on_uninstall,
+            on_download_update=on_download_update
         )
         self._update_sort_indicators("name", False)
         self.default_program_icon = self.create_default_program_icon()
@@ -259,7 +265,9 @@ class SoftwareManagerView:
         on_refresh: Callable[[], None],
         on_export: Callable[[], None],
         on_import: Callable[[], None],
-        on_uninstall: Callable[[], None]
+        on_uninstall: Callable[[], None],
+        *,
+        on_download_update: Callable[[], None]
     ) -> Tuple[ttk.Treeview, ttk.Label, ttk.Progressbar]:
         """Build the branded header, action bar, table, and footer."""
         self.root.configure(bg="#0b1120")
@@ -373,7 +381,9 @@ class SoftwareManagerView:
         )
         table_surface.pack(fill="both", expand=True)
         tree = self._create_table(table_surface.content)
-        status, list_progress = self._create_footer(on_uninstall)
+        status, list_progress = self._create_footer(
+            on_uninstall, on_download_update
+        )
         return tree, status, list_progress
 
     def _create_summary_cards(self, parent: tk.Misc) -> None:
@@ -561,7 +571,9 @@ class SoftwareManagerView:
         return tree
 
     def _create_footer(
-        self, on_uninstall: Callable[[], None]
+        self,
+        on_uninstall: Callable[[], None],
+        on_download_update: Callable[[], None]
     ) -> Tuple[ttk.Label, ttk.Progressbar]:
         """Add status, uninstall action, and copyright notice."""
         footer_panel = RoundedPanel(
@@ -582,6 +594,26 @@ class SoftwareManagerView:
             style="Status.TLabel"
         )
         status.pack(side="left")
+        self.action_buttons["download_update"] = RoundedButton(
+            footer,
+            text=self._text("download_update"),
+            command=on_download_update,
+            style=RoundedButtonStyle(
+                background="#3478e5",
+                foreground="#ffffff",
+                hover_background="#2867cc",
+                border="#4386f0",
+                canvas_background="#121d31",
+                font=("Segoe UI", 9, "bold"),
+                padx=14,
+                pady=8,
+                radius=12
+            )
+        )
+        self.action_buttons["download_update"].pack(
+            side="right", padx=(0, 8)
+        )
+        self.action_buttons["download_update"].set_enabled(False)
         list_progress = ttk.Progressbar(
             footer,
             mode="indeterminate",
@@ -661,11 +693,32 @@ class SoftwareManagerView:
         self.program_icons = program_icons
         self.filter_programs()
 
-    def set_latest_versions(self, versions: List[str]) -> None:
+    def set_latest_versions(
+        self,
+        versions: List[str],
+        *,
+        package_ids: Optional[List[str]] = None,
+        updates: Optional[List[bool]] = None,
+        download_urls: Optional[List[str]] = None
+    ) -> None:
         """Update version metadata while preserving the active table state."""
         selected = self.selected_programs()
-        for program, version in zip(self.programs, versions):
+        ids = package_ids or []
+        update_flags = updates or []
+        urls = download_urls or []
+        for index, (program, version) in enumerate(
+            zip(self.programs, versions)
+        ):
             program["latest_version"] = version
+            program["winget_id"] = (
+                ids[index] if index < len(ids) else ""
+            )
+            program["update_available"] = (
+                update_flags[index] if index < len(update_flags) else False
+            )
+            program["download_url"] = (
+                urls[index] if index < len(urls) else ""
+            )
         column, reverse = self._active_sort()
         if column == "latest_version":
             self._sort_filtered_programs(column, reverse)
@@ -867,6 +920,12 @@ class SoftwareManagerView:
             event.widget if event else self.tree
         )
         self.summary_values["selected"].config(text=str(len(tree.selection())))
+        selected = self.selected_programs()
+        self.action_buttons["download_update"].set_enabled(
+            len(selected) == 1
+            and bool(selected[0].get("update_available"))
+            and bool(selected[0].get("download_url"))
+        )
 
     def select_all(self) -> None:
         """Select all programs currently shown in the table."""

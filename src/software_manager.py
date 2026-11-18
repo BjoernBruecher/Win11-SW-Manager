@@ -2,11 +2,13 @@
 
 import ctypes
 import json
+import logging
 import threading
 import tkinter as tk
+import webbrowser
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from .localization import detect_system_language, translate
 from .program_icons import get_program_icon_ppm
@@ -14,7 +16,9 @@ from .program_repository import ProgramRepository
 from .program_uninstaller import ProgramUninstaller
 from .program_versions import (
     ProgramVersionLookupError,
-    get_latest_versions
+    get_download_url,
+    get_latest_version_details,
+    is_safe_download_url
 )
 from .rounded_widgets import (
     RoundedButton,
@@ -27,6 +31,16 @@ from .single_instance import (
     release_application_mutex
 )
 from .software_manager_view import SoftwareManagerView
+
+
+class LatestVersionLookup(NamedTuple):
+    """Version metadata and installer links produced by a lookup."""
+
+    versions: Optional[List[str]]
+    package_ids: Optional[List[str]]
+    updates: Optional[List[bool]]
+    download_urls: Optional[List[str]]
+    unavailable_links: int
 
 
 class SoftwareManager:
@@ -44,7 +58,8 @@ class SoftwareManager:
             on_refresh=self.refresh,
             on_export=self.export_json,
             on_import=self.import_json,
-            on_uninstall=self.uninstall_selected
+            on_uninstall=self.uninstall_selected,
+            on_download_update=self.open_selected_update
         )
         self._initial_refresh_id: Optional[str] = self.root.after(
             100, self._start_initial_refresh
@@ -161,24 +176,58 @@ class SoftwareManager:
     def _latest_version_worker(
         self, programs: List[Dict[str, Any]], generation: int
     ) -> None:
-        """Retrieve latest versions and dispatch them to the UI thread."""
+        """Retrieve versions and update download links in the background."""
         try:
-            versions = get_latest_versions(programs)
+            versions, package_ids, updates = get_latest_version_details(
+                programs
+            )
         except ProgramVersionLookupError:
-            versions = None
+            lookup = LatestVersionLookup(
+                None, None, None, None, 0
+            )
+        else:
+            download_urls = [""] * len(programs)
+            unavailable_links = 0
+            for index, (package_id, version, update_available) in enumerate(
+                zip(package_ids, versions, updates)
+            ):
+                if not update_available:
+                    continue
+                if not package_id:
+                    unavailable_links += 1
+                    continue
+                try:
+                    download_urls[index] = get_download_url(
+                        package_id, version
+                    )
+                except ProgramVersionLookupError as exc:
+                    logging.warning(
+                        "Could not get the download link for %s %s: %s",
+                        package_id,
+                        version,
+                        exc
+                    )
+                    unavailable_links += 1
+            lookup = LatestVersionLookup(
+                versions,
+                package_ids,
+                updates,
+                download_urls,
+                unavailable_links
+            )
         self.root.after(
             0,
             self._finish_latest_version_lookup,
             programs,
             generation,
-            versions
+            lookup
         )
 
     def _finish_latest_version_lookup(
         self,
         programs: List[Dict[str, Any]],
         generation: int,
-        versions: Optional[List[str]]
+        lookup: LatestVersionLookup
     ) -> None:
         """Apply version data only if it still belongs to the shown list."""
         if (
@@ -186,11 +235,57 @@ class SoftwareManager:
             or self.view.programs is not programs
         ):
             return
-        if versions is None:
+        if lookup.versions is None:
             self.view.set_status("status_versions_unavailable")
             return
-        self.view.set_latest_versions(versions)
-        self.view.set_status("status_versions_checked")
+        self.view.set_latest_versions(
+            lookup.versions,
+            package_ids=lookup.package_ids,
+            updates=lookup.updates,
+            download_urls=lookup.download_urls
+        )
+        if lookup.unavailable_links:
+            self.view.set_status(
+                "status_download_links_unavailable",
+                count=lookup.unavailable_links
+            )
+        else:
+            self.view.set_status("status_versions_checked")
+
+    def open_selected_update(self) -> None:
+        """Open the installer URL for the single selected available update."""
+        programs = self.view.selected_programs()
+        if len(programs) != 1:
+            messagebox.showwarning(
+                self._text("download_selection_title"),
+                self._text("download_selection_required")
+            )
+            return
+
+        program = programs[0]
+        url = str(program.get("download_url", "")).strip()
+        if (
+            not program.get("update_available")
+            or not is_safe_download_url(url)
+        ):
+            messagebox.showerror(
+                self._text("download_error_title"),
+                self._text("download_link_unavailable")
+            )
+            return
+
+        try:
+            opened = webbrowser.open(url)
+        except (OSError, webbrowser.Error) as exc:
+            messagebox.showerror(
+                self._text("download_error_title"), str(exc)
+            )
+            return
+        if not opened:
+            messagebox.showerror(
+                self._text("download_error_title"),
+                self._text("download_browser_error")
+            )
 
     def export_json(self) -> None:
         """Save the full program inventory as a JSON file."""

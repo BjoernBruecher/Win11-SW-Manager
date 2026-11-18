@@ -33,6 +33,7 @@ $arguments = @(
     "--clean",
     "--onefile",
     "--windowed",
+    "--uac-admin",
     "--name", "Win11-SW-Manager",
     "--icon", $iconPath,
     "--add-data",

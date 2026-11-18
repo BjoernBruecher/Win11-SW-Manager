@@ -3,6 +3,7 @@
 import re
 import subprocess
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlsplit
 
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -21,10 +22,32 @@ _HEADER_ROLES = {
     "source": {"source", "quelle", "origine", "fonte", "fuente"},
     "version": {"version", "versione", "versiones"},
 }
+_INSTALLER_URL_LABELS = {
+    "installerurl",
+    "installationsprogrammurl",
+    "urlduprogrammedinstallation",
+    "urlinstallateur",
+    "urlprogrammadiinstallazione",
+    "urldellinstaller",
+}
 
 
 class ProgramVersionLookupError(RuntimeError):
     """Raised when winget cannot provide a usable installed-package list."""
+
+
+def is_safe_download_url(url: str) -> bool:
+    """Check that a download URL uses HTTP(S) without embedded credentials."""
+    try:
+        parsed_url = urlsplit(url)
+    except ValueError:
+        return False
+    return (
+        parsed_url.scheme in {"http", "https"}
+        and bool(parsed_url.hostname)
+        and parsed_url.username is None
+        and parsed_url.password is None
+    )
 
 
 def _normalize(value: object) -> str:
@@ -40,6 +63,34 @@ def _header_role(value: str) -> Optional[str]:
         if normalized in aliases:
             return role
     return None
+
+
+def _installer_urls(output: str) -> List[str]:
+    """Extract installer URLs from English and supported localized output."""
+    urls = []
+    for line in output.splitlines():
+        label, separator, value = line.partition(":")
+        normalized_label = re.sub(
+            r"[^a-z]",
+            "",
+            label.casefold().translate(
+                str.maketrans({
+                    "ä": "a",
+                    "ö": "o",
+                    "ü": "u",
+                    "ß": "ss",
+                    "é": "e",
+                    "è": "e",
+                    "ê": "e",
+                    "à": "a",
+                    "’": "",
+                    "'": ""
+                })
+            )
+        )
+        if separator and normalized_label in _INSTALLER_URL_LABELS:
+            urls.append(value.strip())
+    return urls
 
 
 def _find_table_header(
@@ -63,7 +114,7 @@ def _parse_package_row(
     line: str,
     starts: List[int],
     roles: Dict[str, int]
-) -> Optional[Tuple[str, str]]:
+) -> Optional[Tuple[str, str, str, bool]]:
     fields = [
         line[start:starts[column + 1]].strip()
         if column + 1 < len(starts)
@@ -71,57 +122,75 @@ def _parse_package_row(
         for column, start in enumerate(starts)
     ]
     package_name = fields[roles["name"]]
-    if not package_name or not fields[roles["id"]]:
+    package_id = fields[roles["id"]]
+    if not package_name or not package_id:
         return None
 
     available_column = roles.get("available")
     if available_column is not None and fields[available_column]:
-        return package_name, fields[available_column]
+        return package_name, package_id, fields[available_column], True
 
     source_column = roles.get("source")
     if source_column is not None and fields[source_column]:
-        return package_name, fields[roles["version"]]
+        return package_name, package_id, fields[roles["version"]], False
     return None
+
+
+def _parse_winget_list(
+    output: str, programs: List[Dict[str, Any]]
+) -> Tuple[List[str], List[str], List[bool]]:
+    """Map exact winget package-name matches to versions and package IDs."""
+    lines = _ANSI_ESCAPE.sub("", output).splitlines()
+    header_index, header_matches, roles = _find_table_header(lines)
+    starts = [match.start() for match in header_matches]
+    matches_by_name: Dict[str, Set[Tuple[str, str, bool]]] = {}
+    for line in lines[header_index + 1:]:
+        if not line.strip() or re.fullmatch(r"[\s-]*-{3,}[\s-]*", line):
+            continue
+        package = _parse_package_row(line, starts, roles)
+        if package is not None:
+            name, package_id, version, update_available = package
+            if version:
+                matches_by_name.setdefault(_normalize(name), set()).add(
+                    (version, package_id, update_available)
+                )
+    versions_by_name = {}
+    package_ids_by_name = {}
+    updates_by_name = {}
+    for name, matches in matches_by_name.items():
+        versions = {match[0] for match in matches}
+        if len(versions) != 1:
+            continue
+        versions_by_name[name] = next(iter(versions))
+        updates_by_name[name] = any(match[2] for match in matches)
+        package_ids = {match[1] for match in matches}
+        if len(package_ids) == 1:
+            package_ids_by_name[name] = next(iter(package_ids))
+
+    program_names = [
+        _normalize(program.get("name", ""))
+        for program in programs
+    ]
+    return (
+        [versions_by_name.get(name, "") for name in program_names],
+        [package_ids_by_name.get(name, "") for name in program_names],
+        [updates_by_name.get(name, False) for name in program_names]
+    )
 
 
 def parse_winget_list(
     output: str, programs: List[Dict[str, Any]]
 ) -> List[str]:
     """Map exact winget package-name matches to their latest versions."""
-    lines = _ANSI_ESCAPE.sub("", output).splitlines()
-    header_index, header_matches, roles = _find_table_header(lines)
-    starts = [match.start() for match in header_matches]
-    matches_by_name: Dict[str, Set[str]] = {}
-    for line in lines[header_index + 1:]:
-        if not line.strip() or re.fullmatch(r"[\s-]*-{3,}[\s-]*", line):
-            continue
-        package = _parse_package_row(line, starts, roles)
-        if package is not None:
-            name, version = package
-            if version:
-                matches_by_name.setdefault(_normalize(name), set()).add(
-                    version
-                )
-    versions_by_name = {
-        name: next(iter(versions))
-        for name, versions in matches_by_name.items()
-        if len(versions) == 1
-    }
-    return [
-        versions_by_name.get(_normalize(program.get("name", "")), "")
-        for program in programs
-    ]
+    versions, _, _ = _parse_winget_list(output, programs)
+    return versions
 
 
-def get_latest_versions(programs: List[Dict[str, Any]]) -> List[str]:
-    """Return winget's latest available version for each exact name match."""
+def _run_winget(arguments: List[str]) -> subprocess.CompletedProcess:
+    """Run winget without a shell and report command failures explicitly."""
     try:
         result = subprocess.run(
-            [
-                "winget",
-                "list",
-                "--disable-interactivity",
-            ],
+            arguments,
             capture_output=True,
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -138,4 +207,43 @@ def get_latest_versions(programs: List[Dict[str, Any]]) -> List[str]:
         raise ProgramVersionLookupError(
             detail or f"winget exited with code {result.returncode}."
         )
-    return parse_winget_list(result.stdout, programs)
+    return result
+
+
+def get_latest_version_details(
+    programs: List[Dict[str, Any]]
+) -> Tuple[List[str], List[str], List[bool]]:
+    """Return latest versions, exact package IDs, and update flags."""
+    result = _run_winget([
+        "winget",
+        "list",
+        "--disable-interactivity",
+    ])
+    return _parse_winget_list(result.stdout, programs)
+
+
+def get_latest_versions(programs: List[Dict[str, Any]]) -> List[str]:
+    """Return winget's latest available version for each exact name match."""
+    versions, _, _ = get_latest_version_details(programs)
+    return versions
+
+
+def get_download_url(package_id: str, version: str) -> str:
+    """Return a safe HTTP(S) installer URL for an exact package version."""
+    result = _run_winget([
+        "winget",
+        "show",
+        "--id",
+        package_id,
+        "--exact",
+        "--version",
+        version,
+        "--disable-interactivity",
+    ])
+    for url in _installer_urls(result.stdout):
+        if is_safe_download_url(url):
+            return url
+    raise ProgramVersionLookupError(
+        f"winget did not provide an installer URL for {package_id} "
+        f"version {version}."
+    )
