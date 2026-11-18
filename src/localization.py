@@ -2,11 +2,11 @@
 
 import json
 import locale
+import subprocess
 import sys
-import ctypes
 from pathlib import Path
 from string import Formatter
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 
 _LOCALE_FILES: Dict[str, str] = {
@@ -29,39 +29,53 @@ _LOCALE_DIRECTORY: Path = Path(__file__).resolve().parent / "locales"
 
 
 def detect_system_language() -> str:
-    """Choose a supported language from the operating system locale."""
-    try:
-        locale_name = locale.getlocale()[0]
-    except (locale.Error, ValueError):
-        return "DE"
-
-    if not locale_name:
-        return "DE"
-
-    language_name = locale_name.replace("-", "_").split("_", 1)[0].lower()
-    return _LOCALE_LANGUAGE_CODES.get(language_name, "DE")
-
-
-def detect_system_locale_name() -> str:
-    """Return the operating system's user locale name."""
+    """Choose the interface language from the first Windows user language."""
     if sys.platform == "win32":
         try:
-            buffer = (ctypes.c_wchar * 85)()
-            result = ctypes.windll.kernel32.GetUserDefaultLocaleName(
-                buffer, len(buffer)
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-Command",
+                    (
+                        "$userLanguages = Get-WinUserLanguageList; "
+                        "if ($userLanguages.Count -gt 0) { "
+                        "$userLanguages[0].LanguageTag | "
+                        "ConvertTo-Json -Compress }"
+                    )
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
-            if result:
-                return str(buffer.value)
-        except (AttributeError, ctypes.ArgumentError, OSError):
-            pass
+            parsed_language_tag = (
+                json.loads(result.stdout) if result.stdout.strip() else None
+            )
+            language_tag: Optional[str] = (
+                parsed_language_tag
+                if isinstance(parsed_language_tag, str)
+                else None
+            )
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            json.JSONDecodeError,
+            UnicodeError
+        ):
+            language_tag = None
+    else:
+        try:
+            language_tag = locale.getlocale()[0]
+        except (locale.Error, ValueError):
+            language_tag = None
 
-    try:
-        locale_name = locale.getlocale()[0]
-    except (locale.Error, ValueError):
-        locale_name = None
-    if not locale_name:
-        return "Unknown"
-    return locale_name.replace("_", "-")
+    if not language_tag:
+        return "US"
+
+    language_name = language_tag.replace("-", "_").split("_", 1)[0].lower()
+    return _LOCALE_LANGUAGE_CODES.get(language_name, "US")
 
 
 def _load_locale(filename: str) -> Dict[str, str]:

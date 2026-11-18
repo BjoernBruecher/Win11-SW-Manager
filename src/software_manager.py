@@ -33,6 +33,12 @@ from .single_instance import (
 from .software_manager_view import SoftwareManagerView
 
 
+WINGET_TROUBLESHOOTING_URL = (
+    "https://github.com/BjoernBruecher/Win11-SW-Manager/"
+    "blob/main/README.md#troubleshooting-winget-source-issues"
+)
+
+
 class LatestVersionLookup(NamedTuple):
     """Version metadata and installer links produced by a lookup."""
 
@@ -236,7 +242,10 @@ class SoftwareManager:
         ):
             return
         if lookup.versions is None:
-            self.view.set_status("status_versions_unavailable")
+            self.view.set_status_link(
+                "status_versions_unavailable",
+                self.open_winget_troubleshooting
+            )
             return
         self.view.set_latest_versions(
             lookup.versions,
@@ -251,6 +260,18 @@ class SoftwareManager:
             )
         else:
             self.view.set_status("status_versions_checked")
+
+    def open_winget_troubleshooting(self) -> None:
+        """Open the README section for winget source troubleshooting."""
+        try:
+            opened = webbrowser.open(WINGET_TROUBLESHOOTING_URL)
+        except (OSError, webbrowser.Error):
+            opened = False
+        if not opened:
+            messagebox.showerror(
+                self._text("status_error"),
+                self._text("troubleshooting_browser_error")
+            )
 
     def open_selected_update(self) -> None:
         """Open the installer URL for the single selected available update."""

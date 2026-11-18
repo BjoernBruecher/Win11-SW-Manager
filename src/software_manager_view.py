@@ -21,10 +21,21 @@ from typing import (
 
 from .localization import (
     detect_system_language,
-    detect_system_locale_name,
     translate
 )
 from .program_repository import format_install_date, format_size
+from .program_versions import (
+    get_program_version_status,
+    has_safe_download_link
+)
+from .table_status_cells import (
+    create_status_cell,
+    format_status_text,
+    make_status_link_callback,
+    open_status_link,
+    position_status_cells,
+    set_table_scroll
+)
 from .rounded_widgets import (
     RoundedButton,
     RoundedButtonStyle,
@@ -43,7 +54,8 @@ class SoftwareManagerView:
         "latest_version": "column_latest_version",
         "publisher": "column_publisher",
         "install_date": "column_install_date",
-        "estimated_size": "column_estimated_size"
+        "estimated_size": "column_estimated_size",
+        "update_status": "column_update_status"
     }
 
     def __init__(
@@ -65,17 +77,14 @@ class SoftwareManagerView:
             "summary_values": {},
             "labels": {},
             "action_buttons": {},
-            "icons": {}
+            "icons": {},
+            "status_cells": {}
         }
         self.variables: Dict[str, tk.StringVar] = {
             "search": tk.StringVar(master=self.root),
             "language": tk.StringVar(
                 master=self.root,
                 value=detect_system_language()
-            ),
-            "system_locale": tk.StringVar(
-                master=self.root,
-                value=detect_system_locale_name()
             )
         }
         self.status_key: str = "status_ready"
@@ -117,6 +126,17 @@ class SoftwareManagerView:
             on_download_update=on_download_update
         )
         self._update_sort_indicators("name", False)
+        self.tree.bind(
+            "<Button-1>",
+            lambda event: open_status_link(
+                self.tree,
+                event,
+                self.filtered,
+                on_selection_change=self.update_selection_count,
+                on_open=on_download_update
+            ),
+            add=True
+        )
         self.default_program_icon = self.create_default_program_icon()
         self.apply_language()
 
@@ -144,11 +164,6 @@ class SoftwareManagerView:
     def language(self) -> tk.StringVar:
         """Return the selected language variable."""
         return self.variables["language"]
-
-    @property
-    def system_locale_name(self) -> str:
-        """Return the operating system locale name."""
-        return self.variables["system_locale"].get()
 
     def setup_style(self) -> None:
         """Configure the application's ttk widget styles."""
@@ -206,6 +221,12 @@ class SoftwareManagerView:
             background="#121d31",
             foreground="#95a7c7",
             font=("Segoe UI", 10)
+        )
+        style.configure(
+            "StatusLink.TLabel",
+            background="#121d31",
+            foreground="#60a5fa",
+            font=("Segoe UI", 10, "underline")
         )
         style.configure(
             "Horizontal.TProgressbar",
@@ -307,16 +328,6 @@ class SoftwareManagerView:
         )
         subtitle_label.pack(anchor="w", pady=(3, 0))
         self.labels["subtitle"] = subtitle_label
-        os_language_label = ttk.Label(
-            title_block,
-            text=self._text(
-                "os_language",
-                locale=self.system_locale_name
-            ),
-            style="Subheader.TLabel"
-        )
-        os_language_label.pack(anchor="w", pady=(2, 0))
-        self.labels["os_language"] = os_language_label
         self._create_language_selector(header)
 
         summary = ttk.Frame(self.root, padding=(18, 0, 18, 13))
@@ -374,18 +385,7 @@ class SoftwareManagerView:
             )
         )
         table_card.pack(fill="both", expand=True)
-        table_surface = RoundedPanel(
-            table_card.content,
-            RoundedPanelStyle(
-                fill="#17243a",
-                background="#121d31",
-                outline="#344966",
-                radius=17,
-                inset=11
-            )
-        )
-        table_surface.pack(fill="both", expand=True)
-        tree = self._create_table(table_surface.content)
+        tree = self._create_table(table_card.content)
         return tree, status, list_progress
 
     def _create_summary_cards(self, parent: tk.Misc) -> None:
@@ -509,15 +509,7 @@ class SoftwareManagerView:
     def apply_language(self) -> None:
         """Refresh all visible GUI text after a language change."""
         for key, label in self.labels.items():
-            if key == "os_language":
-                continue
             label.config(text=self._text(key))
-        self.labels["os_language"].config(
-            text=self._text(
-                "os_language",
-                locale=self.system_locale_name
-            )
-        )
         for key, button in self.action_buttons.items():
             button.set_text(self._text(key))
         self.root.title(self._text("window_title"))
@@ -559,6 +551,7 @@ class SoftwareManagerView:
         tree.column(
             "estimated_size", width=105, minwidth=85, anchor="e"
         )
+        tree.column("update_status", width=120, minwidth=100)
         tree.bind("<<TreeviewSelect>>", self.update_selection_count)
 
         scrollbar = ttk.Scrollbar(
@@ -567,7 +560,17 @@ class SoftwareManagerView:
             command=self._scroll_treeview,
             style="Vertical.TScrollbar"
         )
-        tree.configure(yscrollcommand=scrollbar.set)
+        status_cells = self.widgets["status_cells"]
+        tree.configure(
+            yscrollcommand=lambda first, last: set_table_scroll(
+                scrollbar, tree, status_cells, first, last
+            )
+        )
+        tree.bind(
+            "<Configure>", lambda _event: position_status_cells(
+                tree, status_cells
+            ), add=True
+        )
         tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         return tree
@@ -729,8 +732,9 @@ class SoftwareManagerView:
             program["download_url"] = (
                 urls[index] if index < len(urls) else ""
             )
+            program["update_status"] = get_program_version_status(program)
         column, reverse = self._active_sort()
-        if column == "latest_version":
+        if column in {"latest_version", "update_status"}:
             self._sort_filtered_programs(column, reverse)
         self._populate_program_table(selected)
 
@@ -738,7 +742,23 @@ class SoftwareManagerView:
         """Store and show a translated status message."""
         self.status_key = key
         self.status_values = dict(values)
-        self.status.config(text=self._text(key, **values))
+        self.status.unbind("<Button-1>")
+        self.status.config(
+            text=self._text(key, **values),
+            style="Status.TLabel",
+            cursor=""
+        )
+
+    def set_status_link(
+        self,
+        key: str,
+        command: Callable[[], None],
+        **values: object
+    ) -> None:
+        """Show a translated, clickable status message."""
+        self.set_status(key, **values)
+        self.status.config(style="StatusLink.TLabel", cursor="hand2")
+        self.status.bind("<Button-1>", lambda _event: command())
 
     def show_list_progress(
         self,
@@ -841,6 +861,9 @@ class SoftwareManagerView:
         program: Dict[str, Any], column: str
     ) -> Optional[Union[float, datetime, str]]:
         """Return a type-aware sort value, or None for missing metadata."""
+        if column == "update_status":
+            status = program.get("update_status")
+            return {"latest": "1", "update": "2"}.get(status)
         value = program.get(column)
         if value is None or value == "":
             return None
@@ -862,6 +885,9 @@ class SoftwareManagerView:
         self, selected_programs: Sequence[Dict[str, Any]] = ()
     ) -> None:
         """Render the currently filtered and sorted programs."""
+        for label in self.widgets["status_cells"].values():
+            label.destroy()
+        self.widgets["status_cells"].clear()
         selected_ids = {id(program) for program in selected_programs}
         self.tree.delete(*self.tree.get_children())
         total = len(self.filtered)
@@ -887,9 +913,28 @@ class SoftwareManagerView:
                     format_install_date(
                         program.get("install_date"), self.language.get()
                     ),
-                    format_size(program.get("estimated_size"))
+                    format_size(program.get("estimated_size")),
+                    ""
                 )
             )
+            version_status = get_program_version_status(program)
+            if version_status:
+                create_status_cell(
+                    self.tree,
+                    self.widgets["status_cells"],
+                    str(index),
+                    format_status_text(program, self._text),
+                    "#4ade80" if version_status == "latest" else "#fb923c",
+                    on_activate=(
+                        make_status_link_callback(
+                            self.tree,
+                            self.filtered,
+                            self.update_selection_count,
+                            self.action_buttons["download_update"].invoke
+                        )
+                        if has_safe_download_link(program) else None
+                    )
+                )
             if id(program) in selected_ids:
                 self.tree.selection_add(str(index))
             if show_progress:
@@ -898,6 +943,8 @@ class SoftwareManagerView:
                     self.root.update_idletasks()
         self._update_program_stats()
         self.update_selection_count()
+        self.root.after_idle(position_status_cells, self.tree,
+                             self.widgets["status_cells"])
 
     def _update_program_stats(self) -> None:
         """Refresh installed, visible, and publisher summary counters."""
@@ -936,6 +983,7 @@ class SoftwareManagerView:
             and bool(selected[0].get("update_available"))
             and bool(selected[0].get("download_url"))
         )
+        position_status_cells(self.tree, self.widgets["status_cells"])
 
     def select_all(self) -> None:
         """Select all programs currently shown in the table."""

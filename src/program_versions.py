@@ -50,6 +50,25 @@ def is_safe_download_url(url: str) -> bool:
     )
 
 
+def get_program_version_status(program: Dict[str, Any]) -> str:
+    """Return whether a program is current, has an update, or is unmatched."""
+    if program.get("update_available"):
+        return "update"
+    installed = str(program.get("version", "")).strip().casefold()
+    latest = str(program.get("latest_version", "")).strip().casefold()
+    return "latest" if installed and installed == latest else ""
+
+
+def has_safe_download_link(program: Dict[str, Any]) -> bool:
+    """Return whether the program has a safe URL for an available update."""
+    return (
+        get_program_version_status(program) == "update"
+        and is_safe_download_url(
+            str(program.get("download_url", "")).strip()
+        )
+    )
+
+
 def _normalize(value: object) -> str:
     return " ".join(str(value).split()).casefold()
 

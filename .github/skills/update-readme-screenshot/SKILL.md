@@ -21,6 +21,14 @@ When adding or refreshing an application screenshot for the README:
   regardless of the operating system locale.
 - Do not change the application's normal locale detection; only force English
   in the temporary screenshot capture process.
+- Wait until the background latest-version lookup has finished before
+  capturing. Confirm the footer shows a terminal result, such as "Latest
+  versions checked", "Could not retrieve ... download link(s)", or the lookup
+  error, and that no lookup is still running. On success, verify every program
+  in the full inventory—not just the currently visible rows—has a final
+  latest-version and update-status result, including an expected blank for
+  unmatched programs. The footer result alone is not sufficient. Do not rely
+  on a fixed delay or capture while any row is still being updated.
 - Save the image as `assets/screenshot.png` and use a Markdown image reference
   in `README.md`:
 

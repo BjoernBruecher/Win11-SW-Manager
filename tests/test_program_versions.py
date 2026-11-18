@@ -8,8 +8,45 @@ from src.program_versions import (
     get_download_url,
     get_latest_version_details,
     get_latest_versions,
+    get_program_version_status,
     parse_winget_list,
 )
+
+
+class VersionStatusTests(unittest.TestCase):
+    """Verify table status only claims latest when versions match."""
+
+    def test_distinguishes_latest_update_and_unknown_versions(self):
+        """Only show a status for a known matching version or available update."""
+        self.assertEqual(
+            get_program_version_status({
+                "version": "1.2.0",
+                "latest_version": "1.2.0",
+            }),
+            "latest",
+        )
+        self.assertEqual(
+            get_program_version_status({
+                "version": "1.2.0",
+                "latest_version": "2.0.0",
+                "update_available": True,
+            }),
+            "update",
+        )
+        self.assertEqual(
+            get_program_version_status({
+                "version": "1.2.0",
+                "latest_version": "",
+            }),
+            "",
+        )
+        self.assertEqual(
+            get_program_version_status({
+                "version": "1.2.0",
+                "latest_version": "2.0.0",
+            }),
+            "",
+        )
 
 
 def format_winget_table(rows, include_available=True, headers=None):

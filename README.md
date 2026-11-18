@@ -26,7 +26,8 @@ This project reads installed applications from the Windows registry, displays th
 - Sort by any table column by clicking its heading
 - View the program name, version, publisher, installation date, and estimated size
 - Check the latest available version for catalog-matched programs using winget
-- Open the exact available-version installer link for a selected program when an update is found
+- See a green "Current" indicator for programs already at the latest version
+- Open an available program's installer link from its table row or the update button
 - See each program's icon when Windows provides one
 - Select multiple entries
 - Show the main window before the initial system scan and populate the table afterward
@@ -38,7 +39,6 @@ This project reads installed applications from the Windows registry, displays th
 - Uninstall selected programs with safety checks
 - Allow only one application instance across Windows sessions
 - Select German (DE), English (US), French (FR), or Italian (IT) using the radio buttons
-- Show the operating system locale in the application header
 - Show the application icon in the window and packaged executable, for use on shortcuts
 - Show the application version in the lower-left corner of the window
 - Request administrator privileges at startup
@@ -120,14 +120,64 @@ CLI (`gh`), and an authenticated GitHub CLI session.
 ## Usage notes
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
-- At startup, the interface selects the supported language matching the operating system locale. If it is unsupported, German is selected; the radio buttons can be used to change it.
-- The latest-version column uses the configured winget sources. Matching is exact by application name; unmatched programs remain blank. When winget reports an available update, select that program and choose **Download update** to open its installer URL in the browser. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
+- On Windows startup, the interface selects the supported language matching the first language in the user's Windows language list. If it is unsupported or unavailable, English (US) is selected; the radio buttons can be used to change it.
+- Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Current** indicator; programs with an available update have an orange, clickable **Update** link in the table and can also be opened with **Download update**. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
 - Winget may send installed application names to its configured sources during lookup.
 - The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
 - Import and export dialogs suggest a JSON filename in the currently selected language.
 - Installation dates and estimated sizes are read from the registry when available. Size values are estimates reported by each installer.
 - Some programs may require administrator rights to uninstall successfully.
 - A confirmation prompt is shown before uninstalling. Unsafe or script-based uninstall commands are not executed automatically.
+
+## Troubleshooting winget source issues
+
+### 1. Accept the source agreements
+
+Open PowerShell or Windows Terminal. Administrator privileges are normally not
+required.
+
+Run:
+
+```powershell
+winget source update --accept-source-agreements
+```
+
+This accepts the agreements for winget's package sources and updates them.
+
+### 2. Check whether it worked
+
+Run:
+
+```powershell
+winget source list
+```
+
+You should see sources such as:
+
+- `msstore`
+- `winget`
+
+Then run:
+
+```powershell
+winget upgrade
+```
+
+If it lists available updates, winget is working.
+
+If you still get an error, reset the default sources and update them again:
+
+```powershell
+winget source reset --force
+winget source update --accept-source-agreements
+```
+
+Then run `winget upgrade` again.
+
+> **Important:** Accepting source agreements means agreeing to the terms for
+> accessing repositories such as Microsoft's Store catalog and the community
+> package repository. This is different from accepting individual software
+> licenses.
 
 ## Project structure
 
