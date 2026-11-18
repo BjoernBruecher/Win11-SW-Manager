@@ -31,6 +31,7 @@ from .rounded_widgets import (
     RoundedPanel,
     RoundedPanelStyle
 )
+from .version import APP_VERSION
 
 
 class SoftwareManagerView:
@@ -575,7 +576,7 @@ class SoftwareManagerView:
         on_uninstall: Callable[[], None],
         on_download_update: Callable[[], None]
     ) -> Tuple[ttk.Label, ttk.Progressbar]:
-        """Add status, uninstall action, and copyright notice."""
+        """Add status, uninstall action, version, and copyright notice."""
         footer_panel = RoundedPanel(
             self.root,
             RoundedPanelStyle(
@@ -639,6 +640,11 @@ class SoftwareManagerView:
 
         copyright_footer = ttk.Frame(self.root, padding=(22, 0, 22, 9))
         copyright_footer.pack(fill="x")
+        ttk.Label(
+            copyright_footer,
+            text=f"v{APP_VERSION}",
+            style="Subheader.TLabel"
+        ).pack(side="left")
         ttk.Label(
             copyright_footer,
             text="Copyright (C) 2026 Bjoern Bruecher",

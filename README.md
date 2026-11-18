@@ -1,6 +1,22 @@
 # Win11-SW-Manager
 
+[![Latest Release](https://img.shields.io/github/v/release/BjoernBruecher/Win11-SW-Manager?display_name=tag&sort=semver)](https://github.com/BjoernBruecher/Win11-SW-Manager/releases)
+
 A small Windows utility for overview and management of installed programs on Windows 11.
+
+## Download
+
+[Download the latest application](https://github.com/BjoernBruecher/Win11-SW-Manager/releases/latest/download/Win11-SW-Manager.exe)
+or download its [SHA-256 checksum](https://github.com/BjoernBruecher/Win11-SW-Manager/releases/latest/download/Win11-SW-Manager.exe.sha256)
+from the same release.
+
+To verify a downloaded executable in PowerShell:
+
+```powershell
+$expected = ((Get-Content .\Win11-SW-Manager.exe.sha256 -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash .\Win11-SW-Manager.exe -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw "SHA-256 checksum mismatch" }
+```
 
 ## Overview
 
@@ -24,6 +40,7 @@ This project reads installed applications from the Windows registry, displays th
 - Select German (DE), English (US), French (FR), or Italian (IT) using the radio buttons
 - Show the operating system locale in the application header
 - Show the application icon in the window and packaged executable, for use on shortcuts
+- Show the application version in the lower-left corner of the window
 - Request administrator privileges at startup
 - Open the window at a height that keeps the copyright notice visible
 
@@ -83,6 +100,23 @@ The executable includes the application icon, which Windows can also use for
 shortcuts to the program. Windows prompts for administrator permission whenever
 the executable starts.
 
+## Create a release
+
+The application version is defined in `src/version.py`. After committing all
+other changes and ensuring the worktree is clean, create and publish a release
+with:
+
+```powershell
+.\release.ps1 -Version 1.0
+```
+
+The supplied version is the major and minor number. The script sets the final
+number to the total Git commit count at the release commit, builds the
+executable, calculates its SHA-256 checksum, commits the version change,
+creates and pushes the matching tag, and publishes a GitHub release with the
+executable and checksum file attached. It requires Git, PyInstaller, GitHub
+CLI (`gh`), and an authenticated GitHub CLI session.
+
 ## Usage notes
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
@@ -113,9 +147,11 @@ Win11-SW-Manager/
 │       └── update-readme-screenshot/
 │           └── SKILL.md
 ├── build_exe.ps1
+├── release.ps1
 ├── Win11-SW-Manager.py
 ├── src/
 │   ├── __init__.py
+│   ├── version.py
 │   ├── software_manager.py
 │   ├── software_manager_view.py
 │   ├── program_repository.py
