@@ -1,11 +1,29 @@
 """Tkinter presentation layer for the Windows software manager."""
 
 import math
+import sys
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 from tkinter import ttk
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast
+)
 
-from .localization import detect_system_language, translate
+from .localization import (
+    detect_system_language,
+    detect_system_locale_name,
+    translate
+)
 from .program_repository import format_install_date, format_size
 from .rounded_widgets import (
     RoundedButton,
@@ -18,39 +36,65 @@ from .rounded_widgets import (
 class SoftwareManagerView:
     """Own the application widgets and the visible program-table state."""
 
-    COLUMN_TITLES = {
+    COLUMN_TITLES: Dict[str, str] = {
         "name": "column_name",
         "version": "column_version",
+        "latest_version": "column_latest_version",
         "publisher": "column_publisher",
         "install_date": "column_install_date",
         "estimated_size": "column_estimated_size"
     }
 
     def __init__(
-        self, root, on_refresh, on_export, on_import, on_uninstall
-    ):
+        self,
+        root: tk.Tk,
+        on_refresh: Callable[[], None],
+        on_export: Callable[[], None],
+        on_import: Callable[[], None],
+        on_uninstall: Callable[[], None]
+    ) -> None:
         """Create the window, controls, and empty program table."""
-        self.root = root
-        self.programs = []
-        self.filtered = []
-        self.program_icons = {}
-        self.widgets = {
+        self.root: tk.Tk = root
+        self.programs: List[Dict[str, Any]] = []
+        self.filtered: List[Dict[str, Any]] = []
+        self.program_icons: Dict[str, tk.PhotoImage] = {}
+        self.widgets: Dict[str, Dict[str, Any]] = {
             "summary_values": {},
             "labels": {},
             "action_buttons": {}
         }
-        self.variables = {
+        self.variables: Dict[str, tk.StringVar] = {
             "search": tk.StringVar(master=self.root),
             "language": tk.StringVar(
                 master=self.root,
                 value=detect_system_language()
+            ),
+            "system_locale": tk.StringVar(
+                master=self.root,
+                value=detect_system_locale_name()
             )
         }
-        self.status_message = {"key": "status_ready", "values": {}}
-
+        self.status_key: str = "status_ready"
+        self.status_values: Dict[str, object] = {}
+        self.tree: ttk.Treeview
+        self.status: ttk.Label
+        self.list_progress: ttk.Progressbar
         self.root.title(self._text("window_title"))
-        self.root.geometry("1200x760")
-        self.root.minsize(950, 600)
+        if sys.platform == "win32":
+            bundle_directory = Path(getattr(
+                sys,
+                "_MEIPASS",
+                Path(__file__).resolve().parent.parent
+            ))
+            iconbitmap = cast(
+                Callable[[str], object],
+                getattr(self.root, "iconbitmap")
+            )
+            iconbitmap(str(
+                bundle_directory / "assets" / "program.ico"
+            ))
+        self.root.geometry("1200x800")
+        self.root.minsize(950, 700)
         self.setup_style()
         self.tree, self.status, self.list_progress = self.create_interface(
             on_refresh, on_export, on_import, on_uninstall
@@ -60,31 +104,36 @@ class SoftwareManagerView:
         self.apply_language()
 
     @property
-    def summary_values(self):
+    def summary_values(self) -> Dict[str, ttk.Label]:
         """Return the summary value labels."""
         return self.widgets["summary_values"]
 
     @property
-    def labels(self):
+    def labels(self) -> Dict[str, ttk.Label]:
         """Return the translated text labels."""
         return self.widgets["labels"]
 
     @property
-    def action_buttons(self):
+    def action_buttons(self) -> Dict[str, RoundedButton]:
         """Return the action buttons that need language updates."""
         return self.widgets["action_buttons"]
 
     @property
-    def search(self):
+    def search(self) -> tk.StringVar:
         """Return the search text variable."""
         return self.variables["search"]
 
     @property
-    def language(self):
+    def language(self) -> tk.StringVar:
         """Return the selected language variable."""
         return self.variables["language"]
 
-    def setup_style(self):
+    @property
+    def system_locale_name(self) -> str:
+        """Return the operating system locale name."""
+        return self.variables["system_locale"].get()
+
+    def setup_style(self) -> None:
         """Configure the application's ttk widget styles."""
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -206,8 +255,12 @@ class SoftwareManagerView:
         )
 
     def create_interface(
-        self, on_refresh, on_export, on_import, on_uninstall
-    ):
+        self,
+        on_refresh: Callable[[], None],
+        on_export: Callable[[], None],
+        on_import: Callable[[], None],
+        on_uninstall: Callable[[], None]
+    ) -> Tuple[ttk.Treeview, ttk.Label, ttk.Progressbar]:
         """Build the branded header, action bar, table, and footer."""
         self.root.configure(bg="#0b1120")
         header = ttk.Frame(self.root, padding=(22, 18, 22, 13))
@@ -244,6 +297,16 @@ class SoftwareManagerView:
         )
         subtitle_label.pack(anchor="w", pady=(3, 0))
         self.labels["subtitle"] = subtitle_label
+        os_language_label = ttk.Label(
+            title_block,
+            text=self._text(
+                "os_language",
+                locale=self.system_locale_name
+            ),
+            style="Subheader.TLabel"
+        )
+        os_language_label.pack(anchor="w", pady=(2, 0))
+        self.labels["os_language"] = os_language_label
         self._create_language_selector(header)
 
         summary = ttk.Frame(self.root, padding=(18, 0, 18, 13))
@@ -313,7 +376,7 @@ class SoftwareManagerView:
         status, list_progress = self._create_footer(on_uninstall)
         return tree, status, list_progress
 
-    def _create_summary_cards(self, parent):
+    def _create_summary_cards(self, parent: tk.Misc) -> None:
         """Create the four live inventory and selection counters."""
         cards = (
             ("installed", "summary_installed"),
@@ -351,8 +414,12 @@ class SoftwareManagerView:
             self.summary_values[key] = value
 
     def _create_toolbar_buttons(
-        self, parent, on_refresh, on_export, on_import
-    ):
+        self,
+        parent: tk.Misc,
+        on_refresh: Callable[[], None],
+        on_export: Callable[[], None],
+        on_import: Callable[[], None]
+    ) -> None:
         """Add inventory actions to the toolbar."""
         self._make_button(
             parent, "refresh", on_refresh, "Accent.TButton"
@@ -366,7 +433,7 @@ class SoftwareManagerView:
             parent, "export_json", on_export, "Export.TButton"
         )
 
-    def _create_search(self, parent):
+    def _create_search(self, parent: tk.Misc) -> None:
         """Add the search field and bind it to table filtering."""
         search_frame = ttk.Frame(parent, style="Toolbar.TFrame")
         search_frame.pack(side="right", padx=(10, 0))
@@ -400,7 +467,7 @@ class SoftwareManagerView:
         ).pack(padx=8, pady=5)
         self.search.trace_add("write", self.filter_programs)
 
-    def _create_language_selector(self, parent):
+    def _create_language_selector(self, parent: tk.Misc) -> None:
         """Add a rounded radio option for each supported locale."""
         selector = RoundedPanel(
             parent,
@@ -423,14 +490,22 @@ class SoftwareManagerView:
                 command=self.apply_language
             ).pack(side="left", padx=4)
 
-    def _text(self, key, **values):
+    def _text(self, key: str, **values: object) -> str:
         """Return a translated string for the currently selected language."""
         return translate(self.language.get(), key, **values)
 
-    def apply_language(self):
+    def apply_language(self) -> None:
         """Refresh all visible GUI text after a language change."""
         for key, label in self.labels.items():
+            if key == "os_language":
+                continue
             label.config(text=self._text(key))
+        self.labels["os_language"].config(
+            text=self._text(
+                "os_language",
+                locale=self.system_locale_name
+            )
+        )
         for key, button in self.action_buttons.items():
             button.set_text(self._text(key))
         self.root.title(self._text("window_title"))
@@ -439,18 +514,19 @@ class SoftwareManagerView:
         self._populate_program_table(self.selected_programs())
         self.status.config(
             text=self._text(
-                self.status_message["key"],
-                **self.status_message["values"]
+                self.status_key,
+                **self.status_values
             )
         )
 
-    def _create_table(self, parent):
+    def _create_table(self, parent: tk.Misc) -> ttk.Treeview:
         """Create the sortable table and its vertical scrollbar."""
         columns = tuple(self.COLUMN_TITLES)
         tree = ttk.Treeview(
             parent, columns=columns, show="tree headings",
             selectmode="extended"
         )
+        self.tree = tree
         tree.heading("#0", text="")
         for column, title in self.COLUMN_TITLES.items():
             tree.heading(
@@ -461,9 +537,10 @@ class SoftwareManagerView:
         tree.column(
             "#0", width=42, minwidth=42, stretch=False, anchor="center"
         )
-        tree.column("name", width=300, minwidth=180)
-        tree.column("version", width=110, minwidth=80)
-        tree.column("publisher", width=250, minwidth=120)
+        tree.column("name", width=270, minwidth=180)
+        tree.column("version", width=105, minwidth=80)
+        tree.column("latest_version", width=125, minwidth=100)
+        tree.column("publisher", width=225, minwidth=120)
         tree.column(
             "install_date", width=125, minwidth=105, anchor="center"
         )
@@ -473,7 +550,9 @@ class SoftwareManagerView:
         tree.bind("<<TreeviewSelect>>", self.update_selection_count)
 
         scrollbar = ttk.Scrollbar(
-            parent, orient="vertical", command=tree.yview,
+            parent,
+            orient="vertical",
+            command=self._scroll_treeview,
             style="Vertical.TScrollbar"
         )
         tree.configure(yscrollcommand=scrollbar.set)
@@ -481,7 +560,9 @@ class SoftwareManagerView:
         scrollbar.pack(side="right", fill="y")
         return tree
 
-    def _create_footer(self, on_uninstall):
+    def _create_footer(
+        self, on_uninstall: Callable[[], None]
+    ) -> Tuple[ttk.Label, ttk.Progressbar]:
         """Add status, uninstall action, and copyright notice."""
         footer_panel = RoundedPanel(
             self.root,
@@ -497,7 +578,7 @@ class SoftwareManagerView:
         footer = footer_panel.content
         status = ttk.Label(
             footer,
-            text=self._text(self.status_message["key"]),
+            text=self._text(self.status_key),
             style="Status.TLabel"
         )
         status.pack(side="left")
@@ -528,12 +609,18 @@ class SoftwareManagerView:
         copyright_footer.pack(fill="x")
         ttk.Label(
             copyright_footer,
-            text="Copyright (C) 2026 Bjoern Bruecher.",
+            text="Copyright (C) 2026 Bjoern Bruecher",
             style="Subheader.TLabel"
         ).pack(side="right")
         return status, list_progress
 
-    def _make_button(self, parent, key, command, style="TButton"):
+    def _make_button(
+        self,
+        parent: tk.Misc,
+        key: str,
+        command: Callable[[], object],
+        style: str = "TButton"
+    ) -> None:
         """Add a pill-shaped button using the requested color variant."""
         variants = {
             "TButton": RoundedButtonStyle(),
@@ -555,7 +642,7 @@ class SoftwareManagerView:
         button.pack(side="left", padx=4)
         self.action_buttons[key] = button
 
-    def create_default_program_icon(self):
+    def create_default_program_icon(self) -> tk.PhotoImage:
         """Create a generic icon for programs without a registered icon."""
         image = tk.PhotoImage(master=self.root, width=24, height=24)
         image.put("#2563eb", to=(2, 2, 22, 22))
@@ -564,18 +651,37 @@ class SoftwareManagerView:
         image.put("#eff6ff", to=(5, 16, 15, 18))
         return image
 
-    def set_programs(self, programs, program_icons):
+    def set_programs(
+        self,
+        programs: List[Dict[str, Any]],
+        program_icons: Dict[str, tk.PhotoImage]
+    ) -> None:
         """Replace the inventory and render it using the supplied icons."""
         self.programs = programs
         self.program_icons = program_icons
         self.filter_programs()
 
-    def set_status(self, key, **values):
+    def set_latest_versions(self, versions: List[str]) -> None:
+        """Update version metadata while preserving the active table state."""
+        selected = self.selected_programs()
+        for program, version in zip(self.programs, versions):
+            program["latest_version"] = version
+        column, reverse = self._active_sort()
+        if column == "latest_version":
+            self._sort_filtered_programs(column, reverse)
+        self._populate_program_table(selected)
+
+    def set_status(self, key: str, **values: object) -> None:
         """Store and show a translated status message."""
-        self.status_message = {"key": key, "values": values}
+        self.status_key = key
+        self.status_values = dict(values)
         self.status.config(text=self._text(key, **values))
 
-    def show_list_progress(self, mode="indeterminate", maximum=100):
+    def show_list_progress(
+        self,
+        mode: Literal["determinate", "indeterminate"] = "indeterminate",
+        maximum: int = 100
+    ) -> None:
         """Show registry-read or table-update progress in the footer."""
         self.list_progress.stop()
         self.list_progress.configure(
@@ -590,19 +696,29 @@ class SoftwareManagerView:
         if mode == "indeterminate":
             self.list_progress.start(12)
 
-    def hide_list_progress(self):
+    def hide_list_progress(self) -> None:
         """Stop and hide the list progress indicator."""
         self.list_progress.stop()
         self.list_progress.pack_forget()
 
-    def selected_programs(self):
+    def _scroll_treeview(
+        self, *args: str
+    ) -> Optional[Tuple[float, float]]:
+        """Forward scrollbar requests to the Tkinter tree view."""
+        yview = cast(
+            Callable[..., Optional[Tuple[float, float]]],
+            getattr(self.tree, "yview")
+        )
+        return yview(*args)
+
+    def selected_programs(self) -> List[Dict[str, Any]]:
         """Return the program records selected in the visible table."""
         return [
             self.filtered[int(item_id)]
             for item_id in self.tree.selection()
         ]
 
-    def filter_programs(self, *_):
+    def filter_programs(self, *_: object) -> None:
         """Rebuild the table with programs matching the search field."""
         term = self.search.get().lower()
         self.filtered = [
@@ -613,7 +729,7 @@ class SoftwareManagerView:
         self._sort_filtered_programs()
         self._populate_program_table()
 
-    def sort_programs(self, column):
+    def sort_programs(self, column: str) -> None:
         """Sort visible programs by a column and toggle its direction."""
         active_column, active_reverse = self._active_sort()
         reverse = not active_reverse if active_column == column else False
@@ -622,7 +738,7 @@ class SoftwareManagerView:
         self._populate_program_table(selected)
         self._update_sort_indicators(column, reverse)
 
-    def _active_sort(self):
+    def _active_sort(self) -> Tuple[str, bool]:
         """Read the active column and direction from its heading indicator."""
         for column in self.COLUMN_TITLES:
             title = self.tree.heading(column, "text")
@@ -632,24 +748,35 @@ class SoftwareManagerView:
                 return column, True
         return "name", False
 
-    def _sort_filtered_programs(self, column=None, reverse=None):
+    def _sort_filtered_programs(
+        self,
+        column: Optional[str] = None,
+        reverse: Optional[bool] = None
+    ) -> None:
         """Sort valid values while keeping missing values at the end."""
         if column is None or reverse is None:
             column, reverse = self._active_sort()
 
-        sortable = []
-        missing = []
+        sortable: List[
+            Tuple[Union[float, datetime, str], Dict[str, Any]]
+        ] = []
+        missing: List[Dict[str, Any]] = []
         for program in self.filtered:
             value = self._program_sort_value(program, column)
             if value is None:
                 missing.append(program)
             else:
                 sortable.append((value, program))
-        sortable.sort(key=lambda item: item[0], reverse=reverse)
+        sortable.sort(
+            key=lambda item: item[0],
+            reverse=reverse
+        )
         self.filtered = [program for _, program in sortable] + missing
 
     @staticmethod
-    def _program_sort_value(program, column):
+    def _program_sort_value(
+        program: Dict[str, Any], column: str
+    ) -> Optional[Union[float, datetime, str]]:
         """Return a type-aware sort value, or None for missing metadata."""
         value = program.get(column)
         if value is None or value == "":
@@ -668,7 +795,9 @@ class SoftwareManagerView:
         text = str(value).strip().casefold()
         return text or None
 
-    def _populate_program_table(self, selected_programs=()):
+    def _populate_program_table(
+        self, selected_programs: Sequence[Dict[str, Any]] = ()
+    ) -> None:
         """Render the currently filtered and sorted programs."""
         selected_ids = {id(program) for program in selected_programs}
         self.tree.delete(*self.tree.get_children())
@@ -690,6 +819,7 @@ class SoftwareManagerView:
                 values=(
                     program["name"],
                     program.get("version", ""),
+                    program.get("latest_version", ""),
                     program.get("publisher", ""),
                     format_install_date(
                         program.get("install_date"), self.language.get()
@@ -706,7 +836,7 @@ class SoftwareManagerView:
         self._update_program_stats()
         self.update_selection_count()
 
-    def _update_program_stats(self):
+    def _update_program_stats(self) -> None:
         """Refresh installed, visible, and publisher summary counters."""
         publishers = {
             str(program.get("publisher", "")).strip().casefold()
@@ -717,7 +847,9 @@ class SoftwareManagerView:
         self.summary_values["visible"].config(text=str(len(self.filtered)))
         self.summary_values["publishers"].config(text=str(len(publishers)))
 
-    def _update_sort_indicators(self, column, reverse):
+    def _update_sort_indicators(
+        self, column: str, reverse: bool
+    ) -> None:
         """Show the active sort column and direction in its heading."""
         for heading_column, title_key in self.COLUMN_TITLES.items():
             indicator = ""
@@ -728,15 +860,18 @@ class SoftwareManagerView:
                 text=self._text(title_key) + indicator
             )
 
-    def update_selection_count(self, event=None):
+    def update_selection_count(self, event: Optional[tk.Event] = None) -> None:
         """Update the displayed count of selected programs."""
-        tree = event.widget if event else self.tree
+        tree = cast(
+            ttk.Treeview,
+            event.widget if event else self.tree
+        )
         self.summary_values["selected"].config(text=str(len(tree.selection())))
 
-    def select_all(self):
+    def select_all(self) -> None:
         """Select all programs currently shown in the table."""
         self.tree.selection_set(self.tree.get_children())
 
-    def clear_selection(self):
+    def clear_selection(self) -> None:
         """Clear the current table selection."""
         self.tree.selection_remove(self.tree.selection())

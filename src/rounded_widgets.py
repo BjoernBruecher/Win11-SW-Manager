@@ -4,6 +4,7 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont
 from typing import NamedTuple
+from typing import Callable, List, Optional, Tuple, Union
 
 
 class RoundedPanelStyle(NamedTuple):
@@ -24,7 +25,11 @@ class RoundedButtonStyle(NamedTuple):
     hover_background: str = "#304563"
     border: str = "#304563"
     canvas_background: str = "#121d31"
-    font: tuple = ("Segoe UI", 9)
+    font: Union[
+        str,
+        Tuple[str, int],
+        Tuple[str, int, str]
+    ] = ("Segoe UI", 9)
     padx: int = 11
     pady: int = 7
     radius: int = 10
@@ -33,7 +38,9 @@ class RoundedButtonStyle(NamedTuple):
 class RoundedPanel(tk.Frame):
     """A frame with a rounded background and an inset child container."""
 
-    def __init__(self, parent, style):
+    def __init__(
+        self, parent: tk.Misc, style: RoundedPanelStyle
+    ) -> None:
         """Create a rounded panel that can contain normal Tk widgets."""
         super().__init__(
             parent,
@@ -44,7 +51,7 @@ class RoundedPanel(tk.Frame):
         self._fill = style.fill
         self._outline = style.outline
         self._radius = style.radius
-        self._canvas = tk.Canvas(
+        self._canvas: tk.Canvas = tk.Canvas(
             self,
             background=style.background,
             borderwidth=0,
@@ -55,7 +62,7 @@ class RoundedPanel(tk.Frame):
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        self.content = tk.Frame(
+        self.content: tk.Frame = tk.Frame(
             self,
             background=style.fill,
             borderwidth=0,
@@ -69,7 +76,7 @@ class RoundedPanel(tk.Frame):
             pady=style.inset
         )
 
-    def _draw_background(self, event):
+    def _draw_background(self, event: tk.Event) -> None:
         """Redraw the rounded panel when its size changes."""
         self._canvas.delete("panel")
         radius = min(
@@ -94,14 +101,22 @@ class RoundedPanel(tk.Frame):
 class RoundedButton:
     """A compact pill-shaped button drawn on a Tkinter canvas."""
 
-    def __init__(self, parent, text, command=None, style=None):
+    def __init__(
+        self,
+        parent: tk.Misc,
+        text: str,
+        command: Optional[Callable[[], object]] = None,
+        style: Optional[RoundedButtonStyle] = None
+    ) -> None:
         """Create a rounded button with pointer and keyboard activation."""
-        self._style = style or RoundedButtonStyle()
-        self._font = tkfont.Font(parent=parent, font=self._style.font)
-        self._text = text
-        self._command = command
-        self._enabled = True
-        self._state = "normal"
+        self._style: RoundedButtonStyle = style or RoundedButtonStyle()
+        self._font: tkfont.Font = tkfont.Font(
+            parent=parent, font=self._style.font
+        )
+        self._text: str = text
+        self._command: Optional[Callable[[], object]] = command
+        self._enabled: bool = True
+        self._state: str = "normal"
         width = self._font.measure(text) + 2 * self._style.padx
         height = self._font.metrics("linespace") + 2 * self._style.pady
         self.widget = tk.Canvas(
@@ -122,16 +137,16 @@ class RoundedButton:
         self.widget.bind("<Return>", self._on_key)
         self.widget.bind("<space>", self._on_key)
 
-    def pack(self, *args, **kwargs):
+    def pack(self, *args: object, **kwargs: object) -> None:
         """Pack the underlying canvas widget."""
         self.widget.pack(*args, **kwargs)
 
-    def invoke(self):
+    def invoke(self) -> object:
         """Invoke the button command when one is configured."""
         if self._command and self._enabled:
             self._command()
 
-    def set_enabled(self, enabled):
+    def set_enabled(self, enabled: bool) -> None:
         """Enable or disable interaction while retaining the rounded style."""
         self._enabled = bool(enabled)
         self._state = "normal"
@@ -143,7 +158,7 @@ class RoundedButton:
         )
         self._draw_button()
 
-    def set_text(self, text):
+    def set_text(self, text: str) -> None:
         """Update the label and resize the button to fit it."""
         self._text = text
         self.widget.configure(
@@ -151,7 +166,7 @@ class RoundedButton:
         )
         self._draw_button()
 
-    def _draw_button(self, event=None):
+    def _draw_button(self, event: Optional[tk.Event] = None) -> None:
         """Draw the button background and centered label."""
         width = event.width if event else self.widget.winfo_width()
         height = event.height if event else self.widget.winfo_height()
@@ -186,25 +201,25 @@ class RoundedButton:
             tags="button"
         )
 
-    def _on_enter(self, event):
+    def _on_enter(self, event: tk.Event) -> None:
         """Show the hover color when the pointer enters the button."""
         if event.widget is self.widget and self._command and self._enabled:
             self._state = "hover"
             self._draw_button()
 
-    def _on_leave(self, event):
+    def _on_leave(self, event: tk.Event) -> None:
         """Restore the normal color when the pointer leaves the button."""
         if event.widget is self.widget:
             self._state = "normal"
             self._draw_button()
 
-    def _on_press(self, event):
+    def _on_press(self, event: tk.Event) -> None:
         """Show the pressed state for an active button."""
         if event.widget is self.widget and self._command and self._enabled:
             self._state = "pressed"
             self._draw_button()
 
-    def _on_release(self, event):
+    def _on_release(self, event: tk.Event) -> None:
         """Invoke the action when release occurs inside the button."""
         should_invoke = (
             self._command
@@ -218,7 +233,7 @@ class RoundedButton:
         if should_invoke:
             self._command()
 
-    def _on_key(self, event):
+    def _on_key(self, event: tk.Event) -> Optional[str]:
         """Invoke the action using Enter or Space."""
         if (
             self._command
@@ -230,7 +245,13 @@ class RoundedButton:
         return None
 
 
-def _rounded_rectangle_points(left, top, right, bottom, radius):
+def _rounded_rectangle_points(
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    radius: float
+) -> List[float]:
     """Return sampled corner points for a rounded rectangle polygon."""
     corners = (
         (left + radius, top + radius, 270, 180),

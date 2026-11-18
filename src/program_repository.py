@@ -1,6 +1,7 @@
 """Read installed application metadata from the Windows registry."""
 
 from datetime import datetime
+from typing import Any, Dict, List, Tuple
 
 import winreg
 
@@ -8,24 +9,28 @@ import winreg
 class ProgramRepository:
     """Provide installed application records from Windows uninstall keys."""
 
-    REGISTRY_PATH = (
+    REGISTRY_PATH: str = (
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    REGISTRY_ROOTS = (
+    REGISTRY_ROOTS: Tuple[
+        Tuple[winreg.HKEYType, int],
+        Tuple[winreg.HKEYType, int],
+        Tuple[winreg.HKEYType, int],
+    ] = (
         (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_64KEY),
         (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_32KEY),
         (winreg.HKEY_CURRENT_USER, 0),
     )
 
     @staticmethod
-    def _read_value(key, name):
+    def _read_value(key: winreg.HKEYType, name: str) -> object:
         """Read a registry value or return an empty string when absent."""
         try:
             return winreg.QueryValueEx(key, name)[0]
         except OSError:
             return ""
 
-    def load_programs(self):
+    def load_programs(self) -> List[Dict[str, Any]]:
         """Collect, deduplicate, and alphabetize installed applications."""
         programs = []
         seen = set()
@@ -95,7 +100,7 @@ class ProgramRepository:
         return sorted(programs, key=lambda program: program["name"].lower())
 
 
-def format_install_date(value, language="DE"):
+def format_install_date(value: object, language: str = "DE") -> str:
     """Format a registry install date for display."""
     if not value:
         return "—"
@@ -113,7 +118,7 @@ def format_install_date(value, language="DE"):
         return "—"
 
 
-def format_size(value):
+def format_size(value: object) -> str:
     """Format an estimated size in kilobytes for display."""
     try:
         size_kb = float(value)

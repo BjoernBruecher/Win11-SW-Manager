@@ -2,14 +2,15 @@
 
 import ctypes
 from ctypes import wintypes
+from typing import Optional
 
 
-_MUTEX_NAME = r"Global\Win11-SW-Manager"
-_ERROR_ACCESS_DENIED = 5
-_ERROR_ALREADY_EXISTS = 183
+_MUTEX_NAME: str = r"Global\Win11-SW-Manager"
+_ERROR_ACCESS_DENIED: int = 5
+_ERROR_ALREADY_EXISTS: int = 183
 
 
-def _kernel32():
+def _kernel32() -> ctypes.WinDLL:
     """Load kernel32 and declare the APIs used by the mutex guard."""
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.argtypes = (
@@ -23,7 +24,7 @@ def _kernel32():
     return kernel32
 
 
-def acquire_application_mutex():
+def acquire_application_mutex() -> Optional[int]:
     """Return a mutex handle, or None if another instance owns the name."""
     kernel32 = _kernel32()
     ctypes.set_last_error(0)
@@ -43,7 +44,7 @@ def acquire_application_mutex():
     return handle
 
 
-def release_application_mutex(handle):
+def release_application_mutex(handle: Optional[int]) -> None:
     """Release a mutex handle returned by acquire_application_mutex."""
     if handle and not _kernel32().CloseHandle(handle):
         raise ctypes.WinError(ctypes.get_last_error())

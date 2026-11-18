@@ -2,17 +2,20 @@
 
 import json
 import locale
+import sys
+import ctypes
 from pathlib import Path
 from string import Formatter
+from typing import Dict, Set
 
 
-_LOCALE_FILES = {
+_LOCALE_FILES: Dict[str, str] = {
     "DE": "de.json",
     "US": "us.json",
     "FR": "fr.json",
     "IT": "it.json"
 }
-_LOCALE_LANGUAGE_CODES = {
+_LOCALE_LANGUAGE_CODES: Dict[str, str] = {
     "de": "DE",
     "german": "DE",
     "en": "US",
@@ -22,10 +25,10 @@ _LOCALE_LANGUAGE_CODES = {
     "it": "IT",
     "italian": "IT"
 }
-_LOCALE_DIRECTORY = Path(__file__).resolve().parent / "locales"
+_LOCALE_DIRECTORY: Path = Path(__file__).resolve().parent / "locales"
 
 
-def detect_system_language():
+def detect_system_language() -> str:
     """Choose a supported language from the operating system locale."""
     try:
         locale_name = locale.getlocale()[0]
@@ -39,7 +42,29 @@ def detect_system_language():
     return _LOCALE_LANGUAGE_CODES.get(language_name, "DE")
 
 
-def _load_locale(filename):
+def detect_system_locale_name() -> str:
+    """Return the operating system's user locale name."""
+    if sys.platform == "win32":
+        try:
+            buffer = (ctypes.c_wchar * 85)()
+            result = ctypes.windll.kernel32.GetUserDefaultLocaleName(
+                buffer, len(buffer)
+            )
+            if result:
+                return str(buffer.value)
+        except (AttributeError, ctypes.ArgumentError, OSError):
+            pass
+
+    try:
+        locale_name = locale.getlocale()[0]
+    except (locale.Error, ValueError):
+        locale_name = None
+    if not locale_name:
+        return "Unknown"
+    return locale_name.replace("_", "-")
+
+
+def _load_locale(filename: str) -> Dict[str, str]:
     """Load one UTF-8 locale file and validate its string entries."""
     path = _LOCALE_DIRECTORY / filename
     try:
@@ -67,7 +92,7 @@ def _load_locale(filename):
     return translations
 
 
-def _format_fields(value, language, key):
+def _format_fields(value: str, language: str, key: str) -> Set[str]:
     """Return format placeholders, reporting malformed strings clearly."""
     try:
         return {
@@ -81,7 +106,7 @@ def _format_fields(value, language, key):
         ) from error
 
 
-def _load_translations():
+def _load_translations() -> Dict[str, Dict[str, str]]:
     """Load all locales and ensure keys and placeholders stay in sync."""
     translations = {
         language: _load_locale(filename)
@@ -115,9 +140,9 @@ def _load_translations():
     return translations
 
 
-TRANSLATIONS = _load_translations()
+TRANSLATIONS: Dict[str, Dict[str, str]] = _load_translations()
 
 
-def translate(language, key, **values):
+def translate(language: str, key: str, **values: object) -> str:
     """Return a translated string, interpolating any supplied values."""
     return TRANSLATIONS[language][key].format(**values)

@@ -4,6 +4,7 @@ import ctypes
 import os
 import subprocess
 from ctypes import wintypes
+from typing import List
 
 from .localization import translate
 
@@ -12,7 +13,7 @@ class ProgramUninstaller:
     """Encapsulate Windows uninstall command validation and execution."""
 
     @staticmethod
-    def is_admin():
+    def is_admin() -> bool:
         """Return whether the current process has administrator privileges."""
         try:
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
@@ -20,7 +21,7 @@ class ProgramUninstaller:
             return False
 
     @staticmethod
-    def split_command(command):
+    def split_command(command: str) -> List[str]:
         """Parse a Windows command line without shell expansion."""
         shell32 = ctypes.WinDLL("shell32", use_last_error=True)
         shell32.CommandLineToArgvW.argtypes = [
@@ -44,7 +45,7 @@ class ProgramUninstaller:
             ctypes.windll.kernel32.LocalFree(argv)
 
     @classmethod
-    def prepare_arguments(cls, command, language="DE"):
+    def prepare_arguments(cls, command: str, language: str = "DE") -> List[str]:
         """Validate an uninstall command and prepare safe process arguments."""
         args = cls.split_command(command)
         if not args:
@@ -74,7 +75,9 @@ class ProgramUninstaller:
         return args
 
     @classmethod
-    def run(cls, command, language="DE"):
+    def run(
+        cls, command: str, language: str = "DE"
+    ) -> subprocess.CompletedProcess[bytes]:
         """Run a validated uninstall command without invoking a shell."""
         return subprocess.run(
             cls.prepare_arguments(command, language),

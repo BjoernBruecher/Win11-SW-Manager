@@ -6,11 +6,16 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .localization import detect_system_language, translate
 from .program_icons import get_program_icon_ppm
 from .program_repository import ProgramRepository
 from .program_uninstaller import ProgramUninstaller
+from .program_versions import (
+    ProgramVersionLookupError,
+    get_latest_versions
+)
 from .rounded_widgets import (
     RoundedButton,
     RoundedButtonStyle,
@@ -27,33 +32,34 @@ from .software_manager_view import SoftwareManagerView
 class SoftwareManager:
     """Coordinate application workflows and background registry refreshes."""
 
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk) -> None:
         """Create services and view, then start the initial inventory scan."""
-        self.root = root
-        self.repository = ProgramRepository()
-        self.uninstaller = ProgramUninstaller()
-        self.busy = False
-        self.view = SoftwareManagerView(
+        self.root: tk.Tk = root
+        self.repository: ProgramRepository = ProgramRepository()
+        self.uninstaller: ProgramUninstaller = ProgramUninstaller()
+        self.busy: bool = False
+        self.latest_version_lookup_generation: int = 0
+        self.view: SoftwareManagerView = SoftwareManagerView(
             root,
             on_refresh=self.refresh,
             on_export=self.export_json,
             on_import=self.import_json,
             on_uninstall=self.uninstall_selected
         )
-        self._initial_refresh_id = self.root.after(
+        self._initial_refresh_id: Optional[str] = self.root.after(
             100, self._start_initial_refresh
         )
 
-    def _start_initial_refresh(self):
+    def _start_initial_refresh(self) -> None:
         """Start the initial scan after the main window has rendered."""
         self._initial_refresh_id = None
         self.refresh()
 
-    def _text(self, key, **values):
+    def _text(self, key: str, **values: object) -> str:
         """Return translated text for the current interface language."""
         return translate(self.view.language.get(), key, **values)
 
-    def refresh(self):
+    def refresh(self) -> None:
         """Reload installed programs and icons in a background thread."""
         if self._initial_refresh_id is not None:
             self.root.after_cancel(self._initial_refresh_id)
@@ -61,6 +67,7 @@ class SoftwareManager:
         if self.busy:
             return
 
+        self.latest_version_lookup_generation += 1
         self.busy = True
         self.view.set_status("status_searching")
         self.view.show_list_progress()
@@ -68,7 +75,7 @@ class SoftwareManager:
             target=self._refresh_worker, daemon=True
         ).start()
 
-    def _refresh_worker(self):
+    def _refresh_worker(self) -> None:
         """Read registry data and dispatch the result to the UI thread."""
         try:
             programs = self.repository.load_programs()
@@ -85,7 +92,9 @@ class SoftwareManager:
         )
 
     @staticmethod
-    def _load_program_icons(programs):
+    def _load_program_icons(
+        programs: List[Dict[str, Any]]
+    ) -> Dict[str, Optional[bytes]]:
         """Load each distinct registry-provided icon."""
         icon_data = {}
         for program in programs:
@@ -98,7 +107,12 @@ class SoftwareManager:
                 icon_data[icon_path] = None
         return icon_data
 
-    def _finish_refresh(self, programs, icon_data, error):
+    def _finish_refresh(
+        self,
+        programs: List[Dict[str, Any]],
+        icon_data: Dict[str, Optional[bytes]],
+        error: Optional[str]
+    ) -> None:
         """Update widgets after the background program scan finishes."""
         self.busy = False
         if error:
@@ -126,8 +140,59 @@ class SoftwareManager:
         finally:
             self.view.hide_list_progress()
         self.view.set_status("status_refreshed")
+        self._start_latest_version_lookup(programs)
 
-    def export_json(self):
+    def _start_latest_version_lookup(
+        self, programs: List[Dict[str, Any]]
+    ) -> None:
+        """Check package sources without blocking the interface."""
+        if not programs:
+            return
+        self.latest_version_lookup_generation += 1
+        generation = self.latest_version_lookup_generation
+        self.view.set_latest_versions([""] * len(programs))
+        self.view.set_status("status_checking_versions")
+        threading.Thread(
+            target=self._latest_version_worker,
+            args=(programs, generation),
+            daemon=True
+        ).start()
+
+    def _latest_version_worker(
+        self, programs: List[Dict[str, Any]], generation: int
+    ) -> None:
+        """Retrieve latest versions and dispatch them to the UI thread."""
+        try:
+            versions = get_latest_versions(programs)
+        except ProgramVersionLookupError:
+            versions = None
+        self.root.after(
+            0,
+            self._finish_latest_version_lookup,
+            programs,
+            generation,
+            versions
+        )
+
+    def _finish_latest_version_lookup(
+        self,
+        programs: List[Dict[str, Any]],
+        generation: int,
+        versions: Optional[List[str]]
+    ) -> None:
+        """Apply version data only if it still belongs to the shown list."""
+        if (
+            generation != self.latest_version_lookup_generation
+            or self.view.programs is not programs
+        ):
+            return
+        if versions is None:
+            self.view.set_status("status_versions_unavailable")
+            return
+        self.view.set_latest_versions(versions)
+        self.view.set_status("status_versions_checked")
+
+    def export_json(self) -> None:
         """Save the full program inventory as a JSON file."""
         path = filedialog.asksaveasfilename(
             title=self._text("export_title"),
@@ -156,7 +221,7 @@ class SoftwareManager:
                 self._text("export_error_title"), str(exc)
             )
 
-    def import_json(self):
+    def import_json(self) -> None:
         """Load and validate a program inventory from a JSON file."""
         path = filedialog.askopenfilename(
             title=self._text("import_json"),
@@ -189,12 +254,13 @@ class SoftwareManager:
             finally:
                 self.view.hide_list_progress()
             self.view.set_status("status_imported")
+            self._start_latest_version_lookup(imported)
         except (OSError, TypeError, UnicodeError, ValueError) as exc:
             messagebox.showerror(
                 self._text("import_error_title"), str(exc)
             )
 
-    def uninstall_selected(self):
+    def uninstall_selected(self) -> None:
         """Confirm the selection and process each uninstall request."""
         programs = self.view.selected_programs()
         if not programs:
@@ -215,8 +281,15 @@ class SoftwareManager:
         self._uninstall_programs(programs)
         self.refresh()
 
-    def _create_uninstall_progress(self, total):
-        """Create a window showing uninstall successes and remaining items."""
+    def _create_uninstall_progress(
+        self, total: int
+    ) -> Tuple[
+        tk.Toplevel,
+        ttk.Progressbar,
+        ttk.Label,
+        RoundedButton
+    ]:
+        """Create a window showing uninstall progress for a batch."""
         window = tk.Toplevel(self.root)
         window.title(self._text("progress_title"))
         window.transient(self.root)
@@ -251,7 +324,8 @@ class SoftwareManager:
             length=440,
             style="Horizontal.TProgressbar"
         )
-        progress.pack(fill="x")
+        if total > 1:
+            progress.pack(fill="x")
         close_button = RoundedButton(
             frame,
             self._text("progress_close"),
@@ -284,8 +358,11 @@ class SoftwareManager:
         return window, progress, status, close_button
 
     def _update_uninstall_progress(
-        self, widgets, counts, current_program=""
-    ):
+        self,
+        widgets: Tuple[tk.Toplevel, ttk.Progressbar, ttk.Label],
+        counts: Tuple[int, int, int],
+        current_program: str = ""
+    ) -> None:
         """Refresh uninstall counts and the progress bar."""
         window, progress, status = widgets
         successful, processed, total = counts
@@ -304,7 +381,9 @@ class SoftwareManager:
         status.config(text=status_text)
         window.update_idletasks()
 
-    def _uninstall_programs(self, programs):
+    def _uninstall_programs(
+        self, programs: List[Dict[str, Any]]
+    ) -> None:
         """Uninstall selected programs and update their progress."""
         total = len(programs)
         window, progress, status, close_button = (
@@ -331,7 +410,7 @@ class SoftwareManager:
             total=total
         )
 
-    def uninstall_one(self, program):
+    def uninstall_one(self, program: Dict[str, Any]) -> bool:
         """Confirm and safely run one program's uninstall command."""
         name = program["name"]
         confirm = messagebox.askyesno(
@@ -378,7 +457,7 @@ class SoftwareManager:
         return False
 
 
-def main():
+def main() -> None:
     """Launch the Windows software manager."""
     instance_mutex = acquire_application_mutex()
     if instance_mutex is None:

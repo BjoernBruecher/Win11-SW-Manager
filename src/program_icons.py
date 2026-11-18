@@ -3,6 +3,7 @@
 import ctypes
 import os
 from ctypes import wintypes
+from typing import Optional, Tuple
 
 
 class _BitmapInfoHeader(ctypes.Structure):
@@ -23,7 +24,7 @@ class _BitmapInfoHeader(ctypes.Structure):
     ]
 
 
-def parse_display_icon(value):
+def parse_display_icon(value: object) -> Tuple[str, int]:
     """Parse a DisplayIcon value into an expanded path and resource index."""
     entry = str(value).strip()
     icon_index = 0
@@ -53,7 +54,9 @@ def parse_display_icon(value):
     return os.path.expandvars(path), icon_index
 
 
-def _extract_icon_handles(path, icon_index):
+def _extract_icon_handles(
+    path: str, icon_index: int
+) -> Tuple[ctypes.c_void_p, ctypes.c_void_p]:
     """Extract large and small Windows icon handles from a file."""
     shell32 = ctypes.WinDLL("shell32", use_last_error=True)
     extract_icon = shell32.ExtractIconExW
@@ -78,7 +81,9 @@ def _extract_icon_handles(path, icon_index):
     return large_icon, small_icon
 
 
-def _destroy_icon_handles(large_icon, small_icon):
+def _destroy_icon_handles(
+    large_icon: ctypes.c_void_p, small_icon: ctypes.c_void_p
+) -> None:
     """Release distinct icon handles returned by the Windows shell."""
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     destroy_icon = user32.DestroyIcon
@@ -91,7 +96,7 @@ def _destroy_icon_handles(large_icon, small_icon):
         destroy_icon(small_icon)
 
 
-def _render_icon_ppm(icon, size):
+def _render_icon_ppm(icon: int, size: int) -> Optional[bytes]:
     """Draw a Windows icon into a PPM image buffer."""
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
@@ -204,7 +209,9 @@ def _render_icon_ppm(icon, size):
             delete_dc(dc)
 
 
-def get_program_icon_ppm(value, size=24):
+def get_program_icon_ppm(
+    value: object, size: int = 24
+) -> Optional[bytes]:
     """Extract a Windows application icon as PPM data for Tkinter."""
     path, icon_index = parse_display_icon(value)
     if not path or not os.path.isfile(path):

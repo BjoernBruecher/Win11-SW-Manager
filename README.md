@@ -9,17 +9,25 @@ This project reads installed applications from the Windows registry, displays th
 - Search for programs by name or vendor
 - Sort by any table column by clicking its heading
 - View the program name, version, publisher, installation date, and estimated size
+- Check the latest available version for catalog-matched programs using winget
 - See each program's icon when Windows provides one
 - Select multiple entries
 - Show the main window before the initial system scan and populate the table afterward
 - See the live number of selected programs marked for uninstall
 - Track progress while reading and updating the program list
-- Track successful uninstallations and remaining programs with a progress bar
+- Track successful uninstallations and remaining programs with a progress bar for multi-program uninstalls
 - Export the program list as JSON
 - Import a previously exported JSON file
 - Uninstall selected programs with safety checks
 - Allow only one application instance across Windows sessions
 - Select German (DE), English (US), French (FR), or Italian (IT) using the radio buttons
+- Show the operating system locale in the application header
+- Show the application icon in the window and packaged executable, for use on shortcuts
+- Open the window at a height that keeps the copyright notice visible
+
+## Screenshot
+
+![Windows 11 Software Manager](assets/screenshot.png)
 
 ## Features
 
@@ -65,11 +73,15 @@ python -m pip install pyinstaller
 The script builds a single-file, windowed executable at
 `dist\Win11-SW-Manager.exe`. You can select a different Python executable with
 `.\build_exe.ps1 -PythonCommand C:\Path\To\python.exe`.
+The executable includes the application icon, which Windows can also use for
+shortcuts to the program.
 
 ## Usage notes
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
 - At startup, the interface selects the supported language matching the operating system locale. If it is unsupported, German is selected; the radio buttons can be used to change it.
+- The latest-version column uses the configured winget sources. Matching is exact by application name; unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
+- Winget may send installed application names to its configured sources during lookup.
 - The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
 - Import and export dialogs suggest a JSON filename in the currently selected language.
 - Installation dates and estimated sizes are read from the registry when available. Size values are estimates reported by each installer.
@@ -82,11 +94,16 @@ The script builds a single-file, windowed executable at
 Win11-SW-Manager/
 ├── README.md
 ├── CLAUDE.md
+├── assets/
+│   ├── program.ico
+│   └── screenshot.png
 ├── .github/
 │   └── skills/
 │       ├── windows-software-manager/
 │       │   └── SKILL.md
-│       └── rounded-gui/
+│       ├── rounded-gui/
+│       │   └── SKILL.md
+│       └── update-readme-screenshot/
 │           └── SKILL.md
 ├── build_exe.ps1
 ├── Win11-SW-Manager.py
