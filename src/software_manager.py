@@ -191,9 +191,29 @@ class SoftwareManager:
             lookup = LatestVersionLookup(
                 None, None, None, None, 0
             )
+        except Exception:
+            logging.exception("Could not check latest program versions.")
+            lookup = LatestVersionLookup(
+                None, None, None, None, 0
+            )
         else:
             download_urls = [""] * len(programs)
             unavailable_links = 0
+            lookup = LatestVersionLookup(
+                versions,
+                package_ids,
+                updates,
+                list(download_urls),
+                0
+            )
+            self.root.after(
+                0,
+                self._finish_latest_version_lookup,
+                programs,
+                generation,
+                lookup,
+                False
+            )
             for index, (package_id, version, update_available) in enumerate(
                 zip(package_ids, versions, updates)
             ):
@@ -212,6 +232,13 @@ class SoftwareManager:
                         package_id,
                         version,
                         exc
+                    )
+                    unavailable_links += 1
+                except Exception:
+                    logging.exception(
+                        "Unexpected error getting the download link for %s %s.",
+                        package_id,
+                        version
                     )
                     unavailable_links += 1
             lookup = LatestVersionLookup(
@@ -233,7 +260,8 @@ class SoftwareManager:
         self,
         programs: List[Dict[str, Any]],
         generation: int,
-        lookup: LatestVersionLookup
+        lookup: LatestVersionLookup,
+        links_complete: bool = True
     ) -> None:
         """Apply version data only if it still belongs to the shown list."""
         if (
@@ -253,6 +281,8 @@ class SoftwareManager:
             updates=lookup.updates,
             download_urls=lookup.download_urls
         )
+        if not links_complete:
+            return
         if lookup.unavailable_links:
             self.view.set_status(
                 "status_download_links_unavailable",

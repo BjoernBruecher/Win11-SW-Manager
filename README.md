@@ -124,6 +124,7 @@ CLI (`gh`), and an authenticated GitHub CLI session.
 
 ## Usage notes
 
+- Create a current backup of your system before using this program, especially before uninstalling software.
 - The application uses the Windows registry and the uninstall strings of installed applications.
 - On Windows startup, the interface selects the supported language matching the first language in the user's Windows language list. If it is unsupported or unavailable, English (US) is selected; the radio buttons can be used to change it.
 - Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Latest** indicator; programs with an available update show an orange, clickable **↑ latest-version** value in the table and can also be opened with **Download selected updates**. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
