@@ -16,6 +16,7 @@ _HEADER_ROLES = {
         "disponibile",
         "disponivel",
         "verfugbar",
+        "verfgbar",
     },
     "id": {"id", "packageid", "paketid", "identifiant"},
     "name": {"name", "nom", "nome"},
@@ -114,16 +115,36 @@ def _installer_urls(output: str) -> List[str]:
 
 def _find_table_header(
     lines: List[str]
-) -> Tuple[int, List[re.Match], Dict[str, int]]:
+) -> Tuple[int, List[int], Dict[str, int]]:
     for index, line in enumerate(lines):
         matches = list(_COLUMN_PATTERN.finditer(line.rstrip()))
-        line_roles = {
-            _header_role(match.group().strip()): column
-            for column, match in enumerate(matches)
-            if _header_role(match.group().strip())
-        }
+        starts = []
+        line_roles = {}
+        for match in matches:
+            header = match.group().strip()
+            role = _header_role(header)
+            tokens = list(re.finditer(r"\S+", match.group()))
+            token_roles = [
+                (token, _header_role(token.group()))
+                for token in tokens
+            ]
+            recognized_tokens = [
+                (token, token_role)
+                for token, token_role in token_roles
+                if token_role
+            ]
+
+            if role is None and len(recognized_tokens) > 1:
+                for token, token_role in recognized_tokens:
+                    line_roles[token_role] = len(starts)
+                    starts.append(match.start() + token.start())
+            else:
+                column = len(starts)
+                starts.append(match.start())
+                if role:
+                    line_roles[role] = column
         if {"name", "id", "version"}.issubset(line_roles):
-            return index, matches, line_roles
+            return index, starts, line_roles
     raise ProgramVersionLookupError(
         "winget output did not contain a recognizable package table."
     )
@@ -160,8 +181,7 @@ def _parse_winget_list(
 ) -> Tuple[List[str], List[str], List[bool]]:
     """Map exact winget package-name matches to versions and package IDs."""
     lines = _ANSI_ESCAPE.sub("", output).splitlines()
-    header_index, header_matches, roles = _find_table_header(lines)
-    starts = [match.start() for match in header_matches]
+    header_index, starts, roles = _find_table_header(lines)
     matches_by_name: Dict[str, Set[Tuple[str, str, bool]]] = {}
     for line in lines[header_index + 1:]:
         if not line.strip() or re.fullmatch(r"[\s-]*-{3,}[\s-]*", line):
