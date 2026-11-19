@@ -51,7 +51,6 @@ class SoftwareManagerView:
     COLUMN_TITLES: Dict[str, str] = {
         "name": "column_name",
         "version": "column_version",
-        "latest_version": "column_latest_version",
         "publisher": "column_publisher",
         "install_date": "column_install_date",
         "estimated_size": "column_estimated_size",
@@ -543,7 +542,6 @@ class SoftwareManagerView:
         )
         tree.column("name", width=270, minwidth=180)
         tree.column("version", width=105, minwidth=80)
-        tree.column("latest_version", width=125, minwidth=100)
         tree.column("publisher", width=225, minwidth=120)
         tree.column(
             "install_date", width=125, minwidth=105, anchor="center"
@@ -639,6 +637,14 @@ class SoftwareManagerView:
             mode="indeterminate",
             style="Horizontal.TProgressbar"
         )
+        button_spacer = tk.Frame(
+            footer,
+            width=16,
+            height=1,
+            background="#121d31",
+            highlightthickness=0
+        )
+        button_spacer.pack(side="right")
         self.action_buttons["uninstall_button"] = RoundedButton(
             footer,
             text=self._text("uninstall_button"),
@@ -734,7 +740,7 @@ class SoftwareManagerView:
             )
             program["update_status"] = get_program_version_status(program)
         column, reverse = self._active_sort()
-        if column in {"latest_version", "update_status"}:
+        if column == "update_status":
             self._sort_filtered_programs(column, reverse)
         self._populate_program_table(selected)
 
@@ -908,7 +914,6 @@ class SoftwareManagerView:
                 values=(
                     program["name"],
                     program.get("version", ""),
-                    program.get("latest_version", ""),
                     program.get("publisher", ""),
                     format_install_date(
                         program.get("install_date"), self.language.get()

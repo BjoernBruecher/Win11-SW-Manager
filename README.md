@@ -26,7 +26,7 @@ This project reads installed applications from the Windows registry, displays th
 - Sort by any table column by clicking its heading
 - View the program name, version, publisher, installation date, and estimated size
 - Check the latest available version for catalog-matched programs using winget
-- See a green "Current" indicator for programs already at the latest version
+- See a green "Latest" indicator for programs already at the latest version
 - Open an available program's installer link from its table row or the update button
 - See each program's icon when Windows provides one
 - Select multiple entries
@@ -97,7 +97,9 @@ The script builds a single-file, windowed executable at
 `dist\Win11-SW-Manager.exe`. You can select a different Python executable with
 `.\build_exe.ps1 -PythonCommand C:\Path\To\python.exe`.
 The executable includes the application icon, which Windows can also use for
-shortcuts to the program. Windows prompts for administrator permission whenever
+shortcuts to the program. The build script adds Windows file properties from
+`src\version.py`, including file and product versions, description, language,
+copyright, and original filename. Windows prompts for administrator permission whenever
 the executable starts.
 
 ## Create a release
@@ -107,12 +109,15 @@ other changes and ensuring the worktree is clean, create and publish a release
 with:
 
 ```powershell
-.\release.ps1 -Version 1.0
+.\release.ps1 -Version 1.0.0
 ```
 
-The supplied version is the major and minor number. The script sets the final
-number to the total Git commit count at the release commit, builds the
-executable, calculates its SHA-256 checksum, commits the version change,
+The supplied version must contain exactly three dot-separated numbers, for
+example `1.0.0`. The script prints the current version as a reference and
+rejects a lower or malformed version prefix. If `-Version` is omitted, the
+script prompts for it. The script sets the fourth number to the total Git
+commit count at the release commit, builds the executable, calculates its
+SHA-256 checksum, commits the version change,
 creates and pushes the matching tag, and publishes a GitHub release with the
 executable and checksum file attached. It requires Git, PyInstaller, GitHub
 CLI (`gh`), and an authenticated GitHub CLI session.
@@ -121,7 +126,7 @@ CLI (`gh`), and an authenticated GitHub CLI session.
 
 - The application uses the Windows registry and the uninstall strings of installed applications.
 - On Windows startup, the interface selects the supported language matching the first language in the user's Windows language list. If it is unsupported or unavailable, English (US) is selected; the radio buttons can be used to change it.
-- Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Current** indicator; programs with an available update have an orange, clickable **Update** link in the table and can also be opened with **Download update**. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
+- Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Latest** indicator; programs with an available update show an orange, clickable **↑ latest-version** value in the table and can also be opened with **Download selected updates**. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
 - Winget may send installed application names to its configured sources during lookup.
 - The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
 - Import and export dialogs suggest a JSON filename in the currently selected language.

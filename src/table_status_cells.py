@@ -120,13 +120,16 @@ def open_status_link(
 def format_status_text(
     program: Dict[str, Any], translate: Callable[[str], str]
 ) -> str:
-    """Translate the short current/update status label."""
+    """Return the short latest/update status label."""
     status = program.get("update_status")
-    key = {
-        "latest": "table_is_latest",
-        "update": "table_download_update"
-    }.get(status)
-    return translate(key) if key else ""
+    if status == "latest":
+        return translate("table_is_latest")
+    if status == "update":
+        latest_version = str(program.get("latest_version", "")).strip()
+        return f"\u2191 {latest_version}" if latest_version else translate(
+            "table_download_update"
+        )
+    return ""
 
 
 def make_status_link_callback(

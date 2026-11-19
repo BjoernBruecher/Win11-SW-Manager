@@ -1,5 +1,4 @@
 param(
-    [Parameter(Mandatory = $true)]
     [string]$Version,
 
     [string]$PythonCommand = "python"
@@ -12,8 +11,64 @@ $buildScript = Join-Path $projectRoot "build_exe.ps1"
 $executablePath = Join-Path $projectRoot "dist\Win11-SW-Manager.exe"
 $checksumPath = "$executablePath.sha256"
 
-if ($Version -notmatch '^\d+\.\d+$') {
-    throw "Version must contain the major and minor numbers, for example 1.2."
+$originalVersionContent = [System.IO.File]::ReadAllText($versionFile)
+if (
+    $originalVersionContent -notmatch
+    '(?m)^APP_VERSION = "(\d+)\.(\d+)\.(\d+)\.(\d+)"\r?$'
+) {
+    throw "Could not read the current four-part APP_VERSION from $versionFile"
+}
+
+$currentMajor = [int]$Matches[1]
+$currentMinor = [int]$Matches[2]
+$currentPatch = [int]$Matches[3]
+$currentCommit = [int]$Matches[4]
+$currentVersion = "$currentMajor.$currentMinor.$currentPatch.$currentCommit"
+Write-Host "Current version: $currentVersion"
+
+foreach ($component in @(
+    $currentMajor,
+    $currentMinor,
+    $currentPatch,
+    $currentCommit
+)) {
+    if ($component -lt 0 -or $component -gt 65535) {
+        throw "The current APP_VERSION contains a component outside the Windows file-version range 0-65535."
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = Read-Host "Enter release version (three numbers, for example 1.2.3)"
+}
+$Version = $Version.Trim()
+
+if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+    throw "Version must contain exactly three dot-separated numbers, for example 1.2.3."
+}
+
+$releaseMajor = [int]$Matches[1]
+$releaseMinor = [int]$Matches[2]
+$releasePatch = [int]$Matches[3]
+
+foreach ($component in @(
+    $releaseMajor,
+    $releaseMinor,
+    $releasePatch
+)) {
+    if ($component -lt 0 -or $component -gt 65535) {
+        throw "Release version components must be between 0 and 65535."
+    }
+}
+$currentPrefix = @($currentMajor, $currentMinor, $currentPatch)
+$releasePrefix = @($releaseMajor, $releaseMinor, $releasePatch)
+
+for ($index = 0; $index -lt 3; $index++) {
+    if ($releasePrefix[$index] -lt $currentPrefix[$index]) {
+        throw "Release version $Version is lower than the current version prefix $($currentPrefix -join '.')."
+    }
+    if ($releasePrefix[$index] -gt $currentPrefix[$index]) {
+        break
+    }
 }
 
 foreach ($command in @("git", "gh", $PythonCommand)) {
@@ -56,7 +111,7 @@ try {
         throw "Could not determine the current Git commit count."
     }
     $commitNumber = [long]$currentCommitCount + 1
-    $appVersion = "$Version.$commitNumber"
+    $appVersion = "$releaseMajor.$releaseMinor.$releasePatch.$commitNumber"
     $tag = "v$appVersion"
 
     $existingTag = & git tag --list $tag
@@ -72,10 +127,6 @@ try {
         throw "GitHub CLI authentication is required. Run 'gh auth login' first."
     }
 
-    $originalVersionContent = [System.IO.File]::ReadAllText($versionFile)
-    if ($originalVersionContent -notmatch '(?m)^APP_VERSION = "[^"]+"\r?$') {
-        throw "Could not find APP_VERSION in $versionFile."
-    }
     $updatedVersionContent = $originalVersionContent -replace `
         '(?m)^APP_VERSION = "[^"]+"\r?$',
         "APP_VERSION = `"$appVersion`""

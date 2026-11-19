@@ -11,10 +11,36 @@ from src.program_versions import (
     get_program_version_status,
     parse_winget_list,
 )
+from src.table_status_cells import format_status_text
 
 
 class VersionStatusTests(unittest.TestCase):
     """Verify table status only claims latest when versions match."""
+
+    def test_update_status_shows_latest_version_number(self):
+        """Show the available version instead of a generic update label."""
+        translations = {
+            "table_is_latest": "Latest",
+            "table_download_update": "Update",
+        }
+
+        def translate(key):
+            return translations[key]
+
+        self.assertEqual(
+            format_status_text({
+                "update_status": "update",
+                "latest_version": "2.0.0",
+            }, translate),
+            "\u2191 2.0.0",
+        )
+        self.assertEqual(
+            format_status_text({
+                "update_status": "latest",
+                "latest_version": "1.0.0",
+            }, translate),
+            "Latest",
+        )
 
     def test_distinguishes_latest_update_and_unknown_versions(self):
         """Only show a status for a known matching version or available update."""
