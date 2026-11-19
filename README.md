@@ -27,7 +27,7 @@ This project reads installed applications from the Windows registry, displays th
 - View the program name, version, publisher, installation date, and estimated size
 - Check the latest available version for catalog-matched programs using winget
 - See a green "Latest" indicator for programs already at the latest version
-- Open an available program's installer link from its table row or the update button
+- Download selected update installers to the Downloads folder, with at most two downloads at a time
 - See each program's icon when Windows provides one
 - Select multiple entries
 - Show the main window before the initial system scan and populate the table afterward
@@ -127,7 +127,7 @@ CLI (`gh`), and an authenticated GitHub CLI session.
 - Create a current backup of your system before using this program, especially before uninstalling software.
 - The application uses the Windows registry and the uninstall strings of installed applications.
 - On Windows startup, the interface selects the supported language matching the first language in the user's Windows language list. If it is unsupported or unavailable, English (US) is selected; the radio buttons can be used to change it.
-- Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Latest** indicator; programs with an available update show an orange, clickable **↑ latest-version** value in the table and can also be opened with **Download selected updates**. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
+- Version status uses the configured winget sources and exact application-name matching. Matching programs at their latest version show a green **Latest** indicator; programs with an available update show an orange, clickable **↑ latest-version** value in the table. Select one or more updateable programs to download their installers to the Downloads folder; no more than two downloads run at the same time. Downloaded installers are not run automatically. Unmatched programs remain blank. Version lookup runs in the background, and installed programs still load if winget or its sources are unavailable. Winget source agreements must already be accepted; the application does not accept them automatically.
 - Winget may send installed application names to its configured sources during lookup.
 - The interface translations are stored in UTF-8 JSON files under `src/locales/`. Keep the keys and `{placeholders}` consistent between languages.
 - Import and export dialogs suggest a JSON filename in the currently selected language.

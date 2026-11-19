@@ -71,6 +71,7 @@ class SoftwareManagerView:
         self.root: tk.Tk = root
         self.programs: List[Dict[str, Any]] = []
         self.filtered: List[Dict[str, Any]] = []
+        self.downloads_in_progress: bool = False
         self.program_icons: Dict[str, tk.PhotoImage] = {}
         self.widgets: Dict[str, Dict[str, Any]] = {
             "summary_values": {},
@@ -984,11 +985,15 @@ class SoftwareManagerView:
         self.summary_values["selected"].config(text=str(len(tree.selection())))
         selected = self.selected_programs()
         self.action_buttons["download_update"].set_enabled(
-            len(selected) == 1
-            and bool(selected[0].get("update_available"))
-            and bool(selected[0].get("download_url"))
+            not self.downloads_in_progress
+            and any(has_safe_download_link(program) for program in selected)
         )
         position_status_cells(self.tree, self.widgets["status_cells"])
+
+    def set_downloads_in_progress(self, in_progress: bool) -> None:
+        """Disable batch download actions while selected updates are running."""
+        self.downloads_in_progress = in_progress
+        self.update_selection_count()
 
     def select_all(self) -> None:
         """Select all programs currently shown in the table."""

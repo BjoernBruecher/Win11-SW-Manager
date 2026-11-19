@@ -6,11 +6,14 @@ import logging
 import threading
 import tkinter as tk
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from .localization import detect_system_language, translate
+from .program_downloads import UpdateDownloadError, download_installer
 from .program_icons import get_program_icon_ppm
 from .program_repository import ProgramRepository
 from .program_uninstaller import ProgramUninstaller
@@ -18,7 +21,7 @@ from .program_versions import (
     ProgramVersionLookupError,
     get_download_url,
     get_latest_version_details,
-    is_safe_download_url
+    has_safe_download_link
 )
 from .rounded_widgets import (
     RoundedButton,
@@ -58,6 +61,7 @@ class SoftwareManager:
         self.repository: ProgramRepository = ProgramRepository()
         self.uninstaller: ProgramUninstaller = ProgramUninstaller()
         self.busy: bool = False
+        self.downloads_in_progress: bool = False
         self.latest_version_lookup_generation: int = 0
         self.view: SoftwareManagerView = SoftwareManagerView(
             root,
@@ -65,7 +69,7 @@ class SoftwareManager:
             on_export=self.export_json,
             on_import=self.import_json,
             on_uninstall=self.uninstall_selected,
-            on_download_update=self.open_selected_update
+            on_download_update=self.download_selected_updates
         )
         self._initial_refresh_id: Optional[str] = self.root.after(
             100, self._start_initial_refresh
@@ -303,40 +307,191 @@ class SoftwareManager:
                 self._text("troubleshooting_browser_error")
             )
 
-    def open_selected_update(self) -> None:
-        """Open the installer URL for the single selected available update."""
-        programs = self.view.selected_programs()
-        if len(programs) != 1:
+    def download_selected_updates(self) -> None:
+        """Download selected update installers, with no more than two active."""
+        if self.downloads_in_progress:
+            return
+
+        selected_updates = [
+            program for program in self.view.selected_programs()
+            if program.get("update_available")
+        ]
+        if not selected_updates:
             messagebox.showwarning(
                 self._text("download_selection_title"),
                 self._text("download_selection_required")
             )
             return
 
-        program = programs[0]
-        url = str(program.get("download_url", "")).strip()
-        if (
-            not program.get("update_available")
-            or not is_safe_download_url(url)
-        ):
+        programs = [
+            program for program in selected_updates
+            if has_safe_download_link(program)
+        ]
+        failures = [
+            (
+                str(program.get("name", "")),
+                self._text("download_link_unavailable")
+            )
+            for program in selected_updates
+            if not has_safe_download_link(program)
+        ]
+        if not programs:
             messagebox.showerror(
                 self._text("download_error_title"),
                 self._text("download_link_unavailable")
             )
             return
 
+        self.downloads_in_progress = True
+        self.view.set_downloads_in_progress(True)
+        self.view.set_status(
+            "status_downloading_updates",
+            completed=0,
+            total=len(programs)
+        )
         try:
-            opened = webbrowser.open(url)
-        except (OSError, webbrowser.Error) as exc:
+            threading.Thread(
+                target=self._download_updates_worker,
+                args=(programs, failures),
+                daemon=True
+            ).start()
+        except (OSError, RuntimeError) as exc:
+            self.downloads_in_progress = False
+            self.view.set_downloads_in_progress(False)
+            self.view.set_status(
+                "status_downloads_failed",
+                downloaded=0,
+                failed=len(programs) + len(failures)
+            )
             messagebox.showerror(
                 self._text("download_error_title"), str(exc)
             )
-            return
-        if not opened:
-            messagebox.showerror(
-                self._text("download_error_title"),
-                self._text("download_browser_error")
+
+    def _download_updates_worker(
+        self,
+        programs: List[Dict[str, Any]],
+        failures: List[Tuple[str, str]]
+    ) -> None:
+        """Download the batch with at most two concurrent installer requests."""
+        downloaded = 0
+        completed = 0
+        total = len(programs)
+        try:
+            download_directory = Path.home() / "Downloads"
+        except (OSError, RuntimeError) as exc:
+            logging.exception("Could not locate the Downloads folder.")
+            failures.extend(
+                (str(program.get("name", "")), str(exc))
+                for program in programs
             )
+            self.root.after(
+                0, self._finish_download_batch, downloaded, failures
+            )
+            return
+
+        try:
+            executor = ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="update-download"
+            )
+        except (OSError, RuntimeError) as exc:
+            logging.exception("Could not start update download workers.")
+            failures.extend(
+                (str(program.get("name", "")), str(exc))
+                for program in programs
+            )
+            self.root.after(
+                0, self._finish_download_batch, downloaded, failures
+            )
+            return
+
+        with executor:
+            futures = {}
+            for program in programs:
+                try:
+                    future = executor.submit(
+                        download_installer, program, download_directory
+                    )
+                except RuntimeError as exc:
+                    name = str(program.get("name", ""))
+                    logging.exception(
+                        "Could not start the download for %s.", name
+                    )
+                    failures.append((name, str(exc)))
+                    completed += 1
+                    self.root.after(
+                        0, self._update_download_progress, completed, total
+                    )
+                    continue
+                futures[future] = program
+
+            for future in as_completed(futures):
+                program = futures[future]
+                name = str(program.get("name", ""))
+                try:
+                    path = future.result()
+                except UpdateDownloadError as exc:
+                    logging.warning(
+                        "Could not download the update for %s: %s", name, exc
+                    )
+                    failures.append((name, str(exc)))
+                except Exception as exc:
+                    logging.exception(
+                        "Unexpected error downloading the update for %s.",
+                        name
+                    )
+                    failures.append((name, str(exc)))
+                else:
+                    downloaded += 1
+                    logging.info("Downloaded update for %s to %s", name, path)
+                completed += 1
+                self.root.after(
+                    0, self._update_download_progress, completed, total
+                )
+        self.root.after(
+            0, self._finish_download_batch, downloaded, failures
+        )
+
+    def _update_download_progress(
+        self, completed: int, total: int
+    ) -> None:
+        """Update the footer as each selected installer finishes."""
+        self.view.set_status(
+            "status_downloading_updates",
+            completed=completed,
+            total=total
+        )
+
+    def _finish_download_batch(
+        self,
+        downloaded: int,
+        failures: List[Tuple[str, str]]
+    ) -> None:
+        """Restore the download action and report the batch result."""
+        self.downloads_in_progress = False
+        self.view.set_downloads_in_progress(False)
+        if failures:
+            failed = len(failures)
+            self.view.set_status(
+                "status_downloads_partial" if downloaded else
+                "status_downloads_failed",
+                downloaded=downloaded,
+                failed=failed
+            )
+            details = "\n".join(
+                f"{name}: {reason}" for name, reason in failures
+            )
+            show_message = (
+                messagebox.showwarning if downloaded
+                else messagebox.showerror
+            )
+            show_message(
+                self._text("download_error_title"),
+                self._text("download_batch_errors", errors=details)
+            )
+            return
+        self.view.set_status(
+            "status_downloads_complete", count=downloaded
+        )
 
     def export_json(self) -> None:
         """Save the full program inventory as a JSON file."""
